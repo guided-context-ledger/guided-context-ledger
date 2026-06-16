@@ -1,0 +1,4 @@
+# GCL determinism: text is LF in the repo (matches the CRLF->LF hash normalization
+# in spec/Ledger-and-CAS.md), so revision ids recompute identically on any OS.
+* text=auto eol=lf
+*.jsonl text eol=lf
