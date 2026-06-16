@@ -1,0 +1,12 @@
+{
+  "name": "guided-context-ledger",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Guided Context Ledger (GCL) — the auditable provenance ledger for multi-agent work. Monorepo: protocol spec, starter workspace, @guided-context-ledger/core library, and a local reference connector.",
+  "license": "Apache-2.0",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build": "npm run build -w @guided-context-ledger/core && npm run build -w @guided-context-ledger/connector",
+    "test": "npm run test -w @guided-context-ledger/core && npm run test -w @guided-context-ledger/connector"
+  }
+}

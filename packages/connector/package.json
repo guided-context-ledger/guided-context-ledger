@@ -1,0 +1,31 @@
+{
+  "name": "@guided-context-ledger/connector",
+  "version": "0.1.0",
+  "description": "Local reference MCP connector for the Guided Context Ledger — runs the guided loop (orient, events, claims/leases, handoffs, commit, readback) over a plain-files workspace. Detection, not enforcement.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "bin": { "gcl-connector": "dist/index.js" },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "engines": { "node": ">=18" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/guided-context-ledger/guided-context-ledger.git",
+    "directory": "packages/connector"
+  },
+  "dependencies": {
+    "@guided-context-ledger/core": "*",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
