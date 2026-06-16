@@ -1,0 +1,21 @@
+{
+  "name": "@guided-context-ledger/core",
+  "version": "0.1.0",
+  "description": "Transport-agnostic core runtime for the Guided Context Ledger (GCL): workspace I/O, the append-only event/coordination trail (claims, leases, orient/needs_me), and the content-addressed revision ledger (HEAD, CAS).",
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "engines": { "node": ">=18" },
+  "repository": { "type": "git", "url": "https://github.com/guided-context-ledger/guided-context-ledger.git", "directory": "packages/core" },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
