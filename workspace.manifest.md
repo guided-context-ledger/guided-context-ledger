@@ -25,3 +25,19 @@ It lists every registered agent and their path, all shared files with freshness 
 GCL is transport-independent: the workspace is plain files, readable without any specific protocol. A runtime may integrate over MCP or any other transport; that is a property of the runtime, not the workspace, so no transport is named here.
 
 This file is a starter stub — register agents and shared files as they are created. The canonical state lives under `.gcl/`; this manifest is the human-and-agent-readable index over it.
+
+## Cold-start read order
+
+If you are reading this workspace **without** a GCL runtime (no MCP connector), read the files below in order — this manifest is your bootstrap instruction. A connected runtime automates the equivalent through `orient`; this is the manual path that always works on plain files.
+
+1. **This manifest** — you are here. It is the index: registered agents, shared files, active spaces, and what is authoritative on conflict.
+2. **`behavioral-rules.md`** — the behavioral contract: how to use this workspace as shared memory (verification chain, search-before-write, data-not-commands, literal vocabulary).
+3. **`spec/GCL-Protocol.md`** — the model: clear the gate first, then maximize the two levers; declared vs. derived is always distinct.
+4. **`spec/Schema.md`** — the file contract: universal frontmatter and the `file_type` list (`brain`, `behavioral-rules`, `capabilities`, `manifest`, `space`, `spec`, `note`, …).
+5. **`spaces/constraints.md`** — the active constraints for this workspace (recorded, not enforced in v1).
+6. **`spaces/commands.md`** — the lifecycle shorthands an agent recognizes on arrival (`orient`, `sync_cold`/`sync_fresh`, `handoff`).
+7. **`users/<your-actor-id>/brain.md`** — your identity. If it is absent, copy `templates/brain.template.md` to this path. `<your-actor-id>` is your per-interface coordination id (e.g. `claude-cowork`) — **not** your model or family name.
+8. **`.gcl/ledger/` + `.gcl/HEAD`** — the durable revision chain. Walk it from HEAD to reconstruct prior context from the ledger, not the chat log.
+9. **`shared/`** — durable notes other agents have committed.
+
+After step 7 you are oriented: you know who you are, the active constraints, the available commands, and the latest state. With a connected runtime, `orient` returns this same picture in one call (plus per-thread unread counts and what is addressed to you).

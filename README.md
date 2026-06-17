@@ -1,12 +1,8 @@
 # GCL — Guided Context Ledger
 
-> *The audit trail for multi-agent work.*
-
 **GCL is the auditable provenance ledger for multi-agent work — an inspectable record of what happened, who acted, and what context must carry forward. It complements A2A and OKF; it competes with neither.**
 
-> A2A is how agents talk. OKF is what they read. GCL is the inspectable trail of what they did.
-
-It gives multi-agent work a portable, inspectable trail that any vendor's agent can read and reconstruct — so humans stay in control, and a fresh agent can pick up the work from plain files without the chat history. You don't have to trust the maker; you inspect the trail.
+> Put simply: GCL provides the cleanroom for multi-agent work — strict inside, transparent outside.
 
 GCL sits *above* the transport protocol (MCP is one current reference integration) and is designed to outlive it. A GCL workspace is just plain files — markdown, YAML frontmatter, and append-only JSONL — readable in any editor, diffable in git, and consumable by any agent with no custom integration.
 
@@ -52,10 +48,30 @@ The `.md` files humans open are read-only **projections** of canonical `.gcl/` s
 
 ## Start here
 
-1. Point your MCP server (or any GCL runtime) at this workspace root.
-2. Copy `templates/brain.template.md` to `users/<your-actor-id>/brain.md` and fill it in.
-3. Read `spec/GCL-Protocol.md` for the model, `spec/Schema.md` for the file contract, and `spec/Ledger-and-CAS.md` for how the ledger stays honest.
-4. Run `orient` to wake up oriented.
+GCL works at two depths. Start with the first; reach for the second when you want it.
+
+### The 60-second path — no install, no account
+
+You don't have to install or connect anything to see what GCL does. A GCL workspace is just plain files.
+
+1. Open any AI assistant that can read a folder of files — Claude (desktop or Cowork), ChatGPT with file access, Gemini, or similar.
+2. Point it at this workspace folder and tell it: **“Read `workspace.manifest.md` first, then follow the cold-start read order inside it.”**
+3. That's it. The manifest is its own bootstrap instruction — it lists what to read and in what order, and the agent reconstructs the context from the plain files. No protocol, no integration, no lock-in.
+
+This is the proof of the whole idea: any vendor's agent can pick the work up from the files alone. If it can read markdown, it can orient.
+
+### The connected path — for a live, multi-session setup
+
+When you want an agent to *retrieve* context instead of reconstruct it — and to write back to the ledger safely — connect a GCL runtime (today, an MCP server) at the workspace root.
+
+1. Connect the runtime at this workspace root.
+2. Copy `templates/brain.template.md` to `users/<your-actor-id>/brain.md` and fill it in — this is your agent's identity. (`<your-actor-id>` is the per-interface coordination id, e.g. `claude-cowork` — not a model or family name.)
+3. Run `orient` to wake up fully loaded: the active constraints, your brain, who else is around, and what's unread since you last acted — the same picture the manual read order builds, in one call.
+4. From there the connector gives you the ledger: notes with conflict-safe (CAS) writes, the event/handoff trail, claims and leases for owning work, and `gcl_commit` / `gcl_readback` for durable session boundaries.
+
+The connector is **detection, not enforcement** in v1 — it makes bad or conflicting writes visible and expensive, not impossible. A hosted runtime and server-side enforcement are the planned fast-follow.
+
+Want the model behind it? Read `spec/GCL-Protocol.md` (the model), `spec/Schema.md` (the file contract), and `spec/Ledger-and-CAS.md` (how the ledger stays honest).
 
 ---
 
