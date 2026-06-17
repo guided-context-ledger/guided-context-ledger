@@ -74,9 +74,10 @@ test("manifest unreadable (null roster) → register + set_principal skipped (gr
   );
 });
 
-test("bare model/family id → use_interface_actor_id advisory leads", () => {
+test("bare model/family id → use_interface_actor_id leads AND create_profile is suppressed (no agents/claude/profile.md)", () => {
   const acts = actions({ actor: "claude", actors: [{ id: "kyle", kind: "human" }] });
   assert.equal(acts[0], "use_interface_actor_id");
+  assert.ok(!acts.includes("create_profile"), "must not reinforce the bare-id profile path");
 });
 
 test("create_profile reason points at the agent-profile template + names the convention", () => {

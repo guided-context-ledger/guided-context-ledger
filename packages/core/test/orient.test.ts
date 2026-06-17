@@ -9,7 +9,7 @@ let root: string;
 let log: EventLog;
 
 before(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "agenthub-orient-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "gcl-orient-"));
 });
 after(async () => {
   await fs.rm(root, { recursive: true, force: true });

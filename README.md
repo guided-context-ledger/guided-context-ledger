@@ -65,7 +65,7 @@ This is the proof of the whole idea: any vendor's agent can pick the work up fro
 
 When you want an agent to *retrieve* context instead of reconstruct it — and to write back to the ledger safely — connect a GCL runtime (today, an MCP server) at the workspace root.
 
-1. Connect the runtime at this workspace root.
+1. **Set up the connector** — a one-time step; see [Set up the connector](#set-up-the-connector) below. Point it at this workspace with `GCL_WORKSPACE`.
 2. Copy `templates/agent-profile.template.md` to `agents/<your-actor-id>/profile.md` and fill it in — this is your actor profile (identity). (`<your-actor-id>` is the per-interface coordination id, e.g. `claude-cowork` — not a model or family name.)
 3. Run `orient` to wake up fully loaded: the active constraints, your profile, who else is around, and what's unread since you last acted — the same picture the manual read order builds, in one call.
 4. From there the connector gives you the ledger: notes with conflict-safe (CAS) writes, the event/handoff trail, claims and leases for owning work, and `gcl_commit` / `gcl_readback` for durable session boundaries.
@@ -76,13 +76,72 @@ Want the model behind it? Read `spec/GCL-Protocol.md` (the model), `spec/Schema.
 
 ---
 
+## Set up the connector
+
+The connector is a small **local** MCP server (`@guided-context-ledger/connector`) that any MCP-compatible client — Claude Desktop, Claude Code, Cursor, and others — runs to read and write a GCL workspace. You point it at your workspace with one environment variable, `GCL_WORKSPACE`. It runs on your machine against your files; nothing is uploaded.
+
+### Option A — from source (works today)
+
+```bash
+git clone https://github.com/guided-context-ledger/guided-context-ledger.git
+cd guided-context-ledger
+npm install
+npm run build
+```
+
+Then add this to your MCP client's config (Claude Desktop: `claude_desktop_config.json` — Settings → Developer → Edit Config). Use **absolute paths**:
+
+```json
+{
+  "mcpServers": {
+    "guided-context-ledger": {
+      "command": "node",
+      "args": ["/abs/path/to/guided-context-ledger/packages/connector/dist/index.js"],
+      "env": { "GCL_WORKSPACE": "/abs/path/to/your/workspace" }
+    }
+  }
+}
+```
+
+Point `GCL_WORKSPACE` at this repo's folder to start, or at any folder you want as your workspace (it works on an empty one — `orient` will guide you through first-run setup).
+
+### Option B — via npx (once the npm package is published)
+
+No clone or build; the client fetches and runs it:
+
+```json
+{
+  "mcpServers": {
+    "guided-context-ledger": {
+      "command": "npx",
+      "args": ["-y", "@guided-context-ledger/connector"],
+      "env": { "GCL_WORKSPACE": "/abs/path/to/your/workspace" }
+    }
+  }
+}
+```
+
+Claude Code users can skip the JSON entirely:
+
+```bash
+claude mcp add guided-context-ledger -e GCL_WORKSPACE=/abs/path/to/your/workspace -- npx -y @guided-context-ledger/connector
+```
+
+### Verify
+
+**Fully restart** your MCP client (configs don't rebind an already-open connection), then call **`orient`**. You should see the server version, your workspace path, and — on a fresh workspace — first-run guidance pointing you to create your profile. If `orient` echoes the `GCL_WORKSPACE` path you set, you're connected.
+
+A ready-to-edit config lives at [`examples/mcp-config.json`](examples/mcp-config.json).
+
+---
+
 ## First run
 
 A brand-new workspace starts at *genesis*: no actors registered, no work yet. When an agent orients here and finds no profile for itself, this is the path to turn the scaffold into a live workspace. It's the same steps whether you're on the no-install path or connected.
 
 1. **Pick your actor id.** This is your *per-interface coordination id* — e.g. `claude-cowork`, `claude-desktop`, `codex` — tied to the interface you're working through, **not** your model or family name. Distinct ids keep presence, cursors, and "what's addressed to me" from conflating across interfaces of the same model. Unsure? `<assistant>-<interface>` is the convention.
 2. **Create your actor profile.** Copy `templates/agent-profile.template.md` to `agents/<your-actor-id>/profile.md` and fill in your identity, capabilities, and how you work. This is the file a future session reads to remember who you are.
-3. **Capture the human principal.** Copy `templates/user-profile.template.md` to `people/<principal-id>/profile.md` for the person you're acting for, and add them to `actors[]` as `{ kind: human, role: owner }`. Multi-user workspaces just repeat this per person.
+3. **Capture the human principal.** Copy `templates/human-profile.template.md` to `people/<principal-id>/profile.md` for the person you're acting for, and add them to `actors[]` as `{ kind: human, role: owner }`. Multi-user workspaces just repeat this per person.
 4. **(Optional) Set your constraints.** Edit `spaces/constraints.md` to record the rules every actor in this workspace should honor. Recorded and advisory in v1.
 5. **Make your first commit.** Run `gcl_commit` to checkpoint the setup as the first ledger revision, so the next cold reader reconstructs from real state instead of genesis. (`gcl_readback` replays it.)
 6. **Register in the manifest.** Add yourself (and the principal) under `actors[]` in `workspace.manifest.md` so peers and future sessions can find you — `{ id, kind: human|agent, role, profile }`.

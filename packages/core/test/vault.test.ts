@@ -9,7 +9,7 @@ let root: string;
 let vault: Vault;
 
 before(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "agenthub-test-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "gcl-test-"));
 });
 after(async () => {
   await fs.rm(root, { recursive: true, force: true });
@@ -86,7 +86,7 @@ for (const bad of ["../escape.md", "../../etc/passwd", "sub/../../escape.md"]) {
   });
 }
 
-test("vault with a space in its path works (Agent Hub regression)", async () => {
+test("vault with a space in its path works (path-with-space regression)", async () => {
   const spaced = path.join(root, "Spaced Dir");
   await fs.mkdir(spaced, { recursive: true });
   const v = new Vault(spaced);

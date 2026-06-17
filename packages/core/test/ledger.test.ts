@@ -9,7 +9,7 @@ let root: string;
 let ledger: GclLedger;
 
 before(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "agenthub-ledger-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "gcl-ledger-"));
 });
 after(async () => {
   await fs.rm(root, { recursive: true, force: true });

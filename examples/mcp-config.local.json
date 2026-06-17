@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "guided-context-ledger": {
+      "command": "node",
+      "args": ["/abs/path/to/guided-context-ledger/packages/connector/dist/index.js"],
+      "env": {
+        "GCL_WORKSPACE": "/abs/path/to/your/workspace"
+      }
+    }
+  }
+}

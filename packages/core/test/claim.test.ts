@@ -18,7 +18,7 @@ const future = () => new Date(Date.now() + 60 * 60 * 1000).toISOString(); // +1h
 const past = () => new Date(Date.now() - 60 * 60 * 1000).toISOString(); // -1h
 
 before(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "agenthub-claim-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "gcl-claim-"));
 });
 after(async () => {
   await fs.rm(root, { recursive: true, force: true });

@@ -7,7 +7,7 @@ import { Vault, VaultError } from "../src/vault.js";
 
 let root: string;
 before(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "agenthub-v003-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "gcl-v003-"));
 });
 after(async () => {
   await fs.rm(root, { recursive: true, force: true });

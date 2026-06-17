@@ -6,6 +6,11 @@
 .DS_Store
 Thumbs.db
 
+# Local editor / tooling state (not part of the workspace)
+.obsidian/
+.vscode/
+.idea/
+
 # Package build/dependency output
 node_modules/
 packages/*/node_modules/

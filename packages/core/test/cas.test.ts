@@ -9,7 +9,7 @@ let root: string;
 let vault: Vault;
 
 before(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "agenthub-cas-"));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "gcl-cas-"));
 });
 after(async () => {
   await fs.rm(root, { recursive: true, force: true });

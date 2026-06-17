@@ -117,19 +117,23 @@ export function computeGuidance(input: GuidanceInput): Guidance {
   const workspace_state: WorkspaceState = profilePresent ? "ready" : isGenesis ? "genesis" : "provisioning";
 
   const a: SuggestedAction[] = [];
+  const isBareFamily = BARE_FAMILY.test(actor);
 
-  if (BARE_FAMILY.test(actor)) {
+  if (isBareFamily) {
     a.push({
       action: "use_interface_actor_id",
       reason:
-        `"${actor}" looks like a model/family name. Use a per-interface coordination id ` +
-        `(e.g. "${actor}-desktop", "${actor}-cli") so your identity and presence don't collapse with ` +
-        `other interfaces of the same model.`,
+        `"${actor}" looks like a model/family name — using it collapses your identity and presence with ` +
+        `other interfaces of the same model. Re-orient with a per-interface id (e.g. "${actor}-desktop", ` +
+        `"${actor}-cli", "${actor}-mobile"), THEN create your profile at agents/<that-id>/profile.md.`,
       ref: FIRST_RUN_REF,
     });
   }
 
-  if (!profilePresent) {
+  // Suppress create_profile for a bare family id — do NOT reinforce agents/<bare>/profile.md. The
+  // use_interface_actor_id step above steers to a proper interface id first; create_profile fires once
+  // the agent re-orients under that id.
+  if (!profilePresent && !isBareFamily) {
     a.push({
       action: "create_profile",
       reason:

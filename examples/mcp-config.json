@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "guided-context-ledger": {
+      "command": "npx",
+      "args": ["-y", "@guided-context-ledger/connector"],
+      "env": {
+        "GCL_WORKSPACE": "/abs/path/to/your/workspace"
+      }
+    }
+  }
+}
