@@ -35,11 +35,12 @@ my-workspace/
     protocol/                ← the laws (onboard / orient / commit / authority specs)
     agents/{actor}/          ← per-agent onboarding status + capabilities (machine files)
     governance/              ← violations + open conflicts
-  users/{actor}/brain.md     ← agent identity (canonical home for identity)
+  agents/{actor}/profile.md  ← agent actor profile (identity, capabilities, handoff needs)
+  people/{actor}/profile.md  ← human principal profile
   spaces/                    ← the contract: constraints, commands, behavioral rules
-  shared/                    ← cross-agent working space
+  shared/                    ← cross-actor working space
   workspaces/{name}/         ← separate, portable units of project context
-  templates/                 ← starter frontmatter + brain templates
+  templates/                 ← starter frontmatter + actor-profile templates
 ```
 
 The `.md` files humans open are read-only **projections** of canonical `.gcl/` state. Human-authored notes are a separate native lane and are never overwritten by projection.
@@ -65,13 +66,28 @@ This is the proof of the whole idea: any vendor's agent can pick the work up fro
 When you want an agent to *retrieve* context instead of reconstruct it — and to write back to the ledger safely — connect a GCL runtime (today, an MCP server) at the workspace root.
 
 1. Connect the runtime at this workspace root.
-2. Copy `templates/brain.template.md` to `users/<your-actor-id>/brain.md` and fill it in — this is your agent's identity. (`<your-actor-id>` is the per-interface coordination id, e.g. `claude-cowork` — not a model or family name.)
-3. Run `orient` to wake up fully loaded: the active constraints, your brain, who else is around, and what's unread since you last acted — the same picture the manual read order builds, in one call.
+2. Copy `templates/agent-profile.template.md` to `agents/<your-actor-id>/profile.md` and fill it in — this is your actor profile (identity). (`<your-actor-id>` is the per-interface coordination id, e.g. `claude-cowork` — not a model or family name.)
+3. Run `orient` to wake up fully loaded: the active constraints, your profile, who else is around, and what's unread since you last acted — the same picture the manual read order builds, in one call.
 4. From there the connector gives you the ledger: notes with conflict-safe (CAS) writes, the event/handoff trail, claims and leases for owning work, and `gcl_commit` / `gcl_readback` for durable session boundaries.
 
 The connector is **detection, not enforcement** in v1 — it makes bad or conflicting writes visible and expensive, not impossible. A hosted runtime and server-side enforcement are the planned fast-follow.
 
 Want the model behind it? Read `spec/GCL-Protocol.md` (the model), `spec/Schema.md` (the file contract), and `spec/Ledger-and-CAS.md` (how the ledger stays honest).
+
+---
+
+## First run
+
+A brand-new workspace starts at *genesis*: no actors registered, no work yet. When an agent orients here and finds no profile for itself, this is the path to turn the scaffold into a live workspace. It's the same steps whether you're on the no-install path or connected.
+
+1. **Pick your actor id.** This is your *per-interface coordination id* — e.g. `claude-cowork`, `claude-desktop`, `codex` — tied to the interface you're working through, **not** your model or family name. Distinct ids keep presence, cursors, and "what's addressed to me" from conflating across interfaces of the same model. Unsure? `<assistant>-<interface>` is the convention.
+2. **Create your actor profile.** Copy `templates/agent-profile.template.md` to `agents/<your-actor-id>/profile.md` and fill in your identity, capabilities, and how you work. This is the file a future session reads to remember who you are.
+3. **Capture the human principal.** Copy `templates/user-profile.template.md` to `people/<principal-id>/profile.md` for the person you're acting for, and add them to `actors[]` as `{ kind: human, role: owner }`. Multi-user workspaces just repeat this per person.
+4. **(Optional) Set your constraints.** Edit `spaces/constraints.md` to record the rules every actor in this workspace should honor. Recorded and advisory in v1.
+5. **Make your first commit.** Run `gcl_commit` to checkpoint the setup as the first ledger revision, so the next cold reader reconstructs from real state instead of genesis. (`gcl_readback` replays it.)
+6. **Register in the manifest.** Add yourself (and the principal) under `actors[]` in `workspace.manifest.md` so peers and future sessions can find you — `{ id, kind: human|agent, role, profile }`.
+
+After that the workspace is live — the next session orients into a real state, not an empty scaffold. No connector? Every step except 5's commit is a plain file edit; the commit needs a runtime (or stage it for when you connect one).
 
 ---
 

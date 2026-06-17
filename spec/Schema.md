@@ -20,9 +20,9 @@ Every GCL file begins with this block. Fields split into **required** (on every 
 ---
 # --- required on every file ---
 gcl_version: 0.1.0
-file_type: [brain | behavioral-rules | capabilities | active-projects |
+file_type: [actor-profile | behavioral-rules | capabilities | active-projects |
             decision-log | assumptions | session-flags | vocabulary-lock |
-            user-profile | manifest | space | spec | note]
+            manifest | space | spec | note]
 written_by: [coordination actor id]
 written_at: [ISO 8601]
 status: [active | archived | superseded]
@@ -51,11 +51,13 @@ superseded_reason: [why (when superseded)]
 
 Coordination keys on a **distinct actor id per interface**, not per model family. Two interfaces of the same model (e.g. a desktop app vs a CLI) are distinct actors for coordination because they have different tool surfaces and operational reality. Family grouping is display/context metadata only and must never collapse presence, cursors, claims, or "what's addressed to me" across siblings. A workspace resolves an actor's identity declaration through its registry/index, not a hardcoded path.
 
-## Core agent files
+## Core actor files
+
+Actors are **people** (humans) and **agents** (AI), registered in one unified manifest `actors[]` list — each `{ id, kind: human | agent, role, profile }`. `role` and `profile` are open; `kind` is the only closed enum (`system` reserved as a future lane). A workspace resolves a profile through the registry's `profile` path, defaulting by kind; registry membership never gates resolution.
 
 | File | Responsibility |
 |---|---|
-| `users/{actor}/brain.md` | Agent identity: how it's wired, memory model, attention model, what it needs for a clean handoff. Canonical home for identity. |
+| `agents/{id}/profile.md` (agent) · `people/{id}/profile.md` (human) | **Actor profile** — identity: how an agent is wired (memory/attention model) or who a person is and how they operate, capabilities, and what's needed for a clean handoff. `kind` distinguishes the shape; a human has final authority over their own profile. Default path by kind; the `actors[]` entry's `profile` is canonical when present. |
 | `behavioral-rules.md` | Durable hard/soft rules, applied automatically unless overridden in-session. Versioned. |
 | `capabilities.md` | Environment-specific capabilities: transport, tools, memory, permissions, constraints. Never assumed from another instance. |
 | `active-projects.md` | Current project state, one entry per project. |
@@ -63,7 +65,6 @@ Coordination keys on a **distinct actor id per interface**, not per model family
 | `assumptions.md` | Explicit, visible assumptions with basis, risk-if-wrong, and validation method. Kept separate from decisions. |
 | `session-flags.md` | Open threads and continuity signals: open-question, pending-decision, follow-up, warning, conflict. |
 | `vocabulary-lock.md` | Terminology that must not drift; applied to all outputs automatically. |
-| `user-profile.md` | Who the human is and how they operate. Human has final authority over its contents. |
 
 ## Record schemas (essentials)
 
@@ -106,7 +107,7 @@ When two agents write contradictory content to shared space: **neither overwrite
 
 ## Context preference
 
-Agents differ in context window size and attention model (recency-biased vs uniform). Each agent declares a `context_preference` (`compressed | complete | adaptive`) in `brain.md`/`capabilities.md`, and the runtime serves content accordingly. Because file position cannot be relied on as a universal priority signal, an explicit priority declaration — not file order — is the only architecture-agnostic priority mechanism.
+Agents differ in context window size and attention model (recency-biased vs uniform). Each agent declares a `context_preference` (`compressed | complete | adaptive`) in its `profile.md`/`capabilities.md`, and the runtime serves content accordingly. Because file position cannot be relied on as a universal priority signal, an explicit priority declaration — not file order — is the only architecture-agnostic priority mechanism.
 
 ## Conformance checklist
 

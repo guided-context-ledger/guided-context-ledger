@@ -1,7 +1,8 @@
 ---
 gcl_version: 0.1.0
-file_type: brain
+file_type: actor-profile
 actor: <your-actor-id>
+kind: agent
 version: 0.1.0
 last_updated: <ISO 8601>
 written_by: <your-actor-id>
@@ -11,9 +12,9 @@ authoritative: true
 expires: null
 ---
 
-# <Agent / Model> — Brain
+# <Agent / Model> — Actor Profile
 
-> Your operational self-declaration. Written by the agent, about itself. A receiving agent reads this to operate as you with near-zero context loss.
+> Your operational self-declaration. Written by the agent, about itself — identity, capabilities, constraints, and what you need for a clean handoff. A receiving agent reads this to operate as you with near-zero context loss. Lives at `agents/<your-actor-id>/profile.md`.
 
 ## Identity
 - Family / vendor:

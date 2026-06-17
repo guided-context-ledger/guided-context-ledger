@@ -80,9 +80,9 @@ test("read of missing note throws", async () => {
 
 for (const bad of ["../escape.md", "../../etc/passwd", "sub/../../escape.md"]) {
   test(`path traversal blocked: ${bad}`, async () => {
-    await assert.rejects(() => vault.read(bad), /escapes the vault/);
-    await assert.rejects(() => vault.write(bad, "x"), /escapes the vault/);
-    await assert.rejects(() => vault.append(bad, "x"), /escapes the vault/);
+    await assert.rejects(() => vault.read(bad), /escapes the workspace/);
+    await assert.rejects(() => vault.write(bad, "x"), /escapes the workspace/);
+    await assert.rejects(() => vault.append(bad, "x"), /escapes the workspace/);
   });
 }
 

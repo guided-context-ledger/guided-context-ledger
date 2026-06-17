@@ -136,10 +136,10 @@ export class EventLog {
   private async assertRoot(): Promise<void> {
     try {
       const s = await fs.stat(this.root);
-      if (!s.isDirectory()) throw new EventError(`Vault path is not a folder: ${this.root}`, "VAULT_NOT_DIR");
+      if (!s.isDirectory()) throw new EventError(`Workspace path is not a folder: ${this.root}`, "VAULT_NOT_DIR");
     } catch (e) {
       if (e instanceof EventError) throw e;
-      throw new EventError(`Vault folder does not exist: ${this.root}`, "VAULT_MISSING");
+      throw new EventError(`Workspace folder does not exist: ${this.root}`, "VAULT_MISSING");
     }
   }
 

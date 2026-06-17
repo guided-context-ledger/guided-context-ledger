@@ -109,7 +109,7 @@ export class GclLedger {
     const full = path.resolve(this.root, relPath);
     const rel = path.relative(this.root, full);
     if (rel.startsWith("..") || path.isAbsolute(rel)) {
-      throw new LedgerError(`Path escapes the vault: ${relPath}`, "BAD_PATH");
+      throw new LedgerError(`Path escapes the workspace: ${relPath}`, "BAD_PATH");
     }
     return full;
   }

@@ -14,6 +14,7 @@ import {
   type RevisionArtifact,
   type ActionProvenance,
 } from "@guided-context-ledger/core";
+import { computeGuidance, parseActors, type ActorKind } from "./guidance.js";
 
 /**
  * Guided Context Ledger — local reference connector.
@@ -121,28 +122,59 @@ const server = new McpServer({ name: "guided-context-ledger", version: VERSION }
 
 server.tool(
   "orient",
-  "Arrival briefing in one deterministic call. Returns your brain/capabilities status, active constraints, available spaces, per-thread unread counts since you last posted, which threads need you, what's addressed to you, presence, and the current ledger HEAD. Call this FIRST each session, passing your per-interface actor id.",
+  "Arrival briefing in one deterministic call. Returns your actor-profile/capabilities status, active constraints, available spaces, per-thread unread counts since you last posted, which threads need you, what's addressed to you, presence, the current ledger HEAD, and first-run guidance. Call this FIRST each session, passing your per-interface actor id.",
   { actor: z.string().min(1).describe("Your per-interface coordination id, e.g. 'claude-cli' or 'codex' (not a model/family name).") },
   ({ actor }) =>
     safe(async () => {
       const problem = await workspaceProblem();
       if (problem) return fail(problem);
 
-      // A2 / per-interface identity: the brain is resolved at users/<actor>/brain.md where <actor> is
-      // the per-interface coordination id. If absent, the diagnostic names the convention explicitly so
-      // a new user does not silently file their brain under a model/family name and find it invisible.
-      const brainPath = `users/${actor}/brain.md`;
-      let brain: Record<string, unknown>;
+      // Read the manifest once: it is the source for both the actors[] registry (profile-path resolution)
+      // and the first-run guidance roster. Best-effort — if absent, resolution falls back to defaults and
+      // guidance degrades gracefully.
+      let manifestMd: string | null = null;
       try {
-        const fm = parseFrontmatter(await vault.read(brainPath));
-        brain = { path: brainPath, present: true, status: fm.status ?? null, summary: fm.summary ?? null };
+        manifestMd = await vault.read("workspace.manifest.md");
       } catch {
-        brain = { path: brainPath, present: false, status: null, summary: null };
+        /* manifest absent — registry + guidance degrade gracefully */
+      }
+      const actors = parseActors(manifestMd);
+
+      // Resolve this actor's profile. The actors[] registry is canonical for the path when present; else
+      // default by kind (agent → agents/<id>/profile.md, human → people/<id>/profile.md), then the legacy
+      // users/<id>/brain.md location so pre-rename workspaces still resolve. Registry membership NEVER gates
+      // resolution: a fresh cold-boot actor is not registered yet and must still find or be told to create
+      // its profile. If absent, the diagnostic names the per-interface convention explicitly.
+      const entry = actors?.find((e) => e.id === actor) ?? null;
+      const declaredKind: ActorKind = entry?.kind ?? "agent";
+      const defaultPath = declaredKind === "human" ? `people/${actor}/profile.md` : `agents/${actor}/profile.md`;
+      const candidates: { path: string; kind: ActorKind }[] = [];
+      if (entry?.profile) candidates.push({ path: entry.profile, kind: declaredKind });
+      candidates.push({ path: `agents/${actor}/profile.md`, kind: "agent" });
+      candidates.push({ path: `people/${actor}/profile.md`, kind: "human" });
+      candidates.push({ path: `users/${actor}/brain.md`, kind: "agent" }); // legacy, pre-rename workspaces
+
+      let profile: Record<string, unknown> = {
+        path: defaultPath,
+        present: false,
+        kind: declaredKind,
+        status: null,
+        summary: null,
+      };
+      for (const c of candidates) {
+        try {
+          const fm = parseFrontmatter(await vault.read(c.path));
+          profile = { path: c.path, present: true, kind: entry?.kind ?? c.kind, status: fm.status ?? null, summary: fm.summary ?? null };
+          break;
+        } catch {
+          /* try next candidate */
+        }
       }
 
+      const actorDir = (profile.path as string).replace(/\/[^/]+$/, "");
       let capabilitiesPresent = false;
       try {
-        await vault.read(`users/${actor}/capabilities.md`);
+        await vault.read(`${actorDir}/capabilities.md`);
         capabilitiesPresent = true;
       } catch {
         /* optional */
@@ -165,21 +197,38 @@ server.tool(
       const openForMe = ov.open_for_me;
       const head = await ledger.getHead();
 
-      const brainState = brain.present
-        ? (brain.status as string | null) ?? "present"
-        : `ABSENT — author ${brainPath} (use your per-interface actor id, not a model/family name)`;
+      // First-run guidance: additive, derived from the state already read above. Every existing field is unchanged.
+      const unreadThreadCount = ov.threads.filter((t) => (t.unread ?? 0) > 0).length;
+      const guidance = computeGuidance({
+        actor,
+        head,
+        profilePresent: profile.present === true,
+        profilePath: profile.path as string,
+        actors,
+        needsMeCount: needsMe.length,
+        openForMeCount: openForMe.length,
+        unreadThreadCount,
+      });
+
+      const profileState = profile.present
+        ? (profile.status as string | null) ?? "present"
+        : `ABSENT — author ${profile.path} (use your per-interface actor id, not a model/family name)`;
+      const nextText = guidance.suggested_actions.length
+        ? ` next: ${guidance.suggested_actions.map((a) => a.action).join(", ")}`
+        : "";
       const text =
-        `Oriented ${actor} · guided-context-ledger v${VERSION}. brain: ${brainState}; ` +
+        `Oriented ${actor} · guided-context-ledger v${VERSION}. profile: ${profileState}; ` +
         `threads needing you: ${needsMe.length}${needsMe.length ? ` (${needsMe.join(", ")})` : ""}; ` +
         `open for you: ${openForMe.length}${openForMe.length ? ` (${openForMe.map((o) => o.event_id).join(", ")})` : ""}; ` +
-        `constraints: ${constraints.present ? "declared (recorded, not enforced)" : "none"}; ledger HEAD: ${head}.`;
+        `constraints: ${constraints.present ? "declared (recorded, not enforced)" : "none"}; ledger HEAD: ${head}.` +
+        ` [${guidance.workspace_state}]${nextText}`;
 
       return okStruct(text, {
         actor,
         server: "guided-context-ledger",
         server_version: VERSION,
         workspace: { path: vault.root },
-        brain,
+        profile,
         capabilities_present: capabilitiesPresent,
         constraints,
         spaces,
@@ -188,6 +237,7 @@ server.tool(
         open_for_me: openForMe,
         presence: ov.presence,
         ledger_head: head,
+        guidance,
       });
     })
 );
@@ -235,7 +285,7 @@ server.tool(
 server.tool(
   "read_note",
   "Read the full contents of a single note by its workspace-relative path.",
-  { path: z.string().min(1).describe("Workspace-relative path, e.g. 'users/claude-cli/brain.md'.") },
+  { path: z.string().min(1).describe("Workspace-relative path, e.g. 'agents/claude-cli/profile.md'.") },
   ({ path: p }) =>
     safe(async () => {
       try {

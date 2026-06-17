@@ -41,7 +41,7 @@ export class Vault {
     const full = path.resolve(this.root, relPath);
     const rel = path.relative(this.root, full);
     if (rel.startsWith("..") || path.isAbsolute(rel)) {
-      throw new Error(`Path escapes the vault: ${relPath}`);
+      throw new Error(`Path escapes the workspace: ${relPath}`);
     }
     return full;
   }
@@ -65,10 +65,10 @@ export class Vault {
   private async assertRootUsable(): Promise<void> {
     const { exists, isDirectory } = await this.rootStatus();
     if (!exists) {
-      throw new VaultError(`Vault folder does not exist: ${this.root}`, "VAULT_MISSING");
+      throw new VaultError(`Workspace folder does not exist: ${this.root}`, "VAULT_MISSING");
     }
     if (!isDirectory) {
-      throw new VaultError(`Vault path is not a folder: ${this.root}`, "VAULT_NOT_DIR");
+      throw new VaultError(`Workspace path is not a folder: ${this.root}`, "VAULT_NOT_DIR");
     }
   }
 
