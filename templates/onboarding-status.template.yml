@@ -1,0 +1,17 @@
+# GCL onboarding contract — machine file read by the commit gate (Inv 14/15).
+#
+# Creating your profile in this workspace IS accepting its current contract
+# (implicit accept). Mint this file alongside your profile, at:
+#
+#     .gcl/agents/<your-actor-id>/onboarding-status.yml
+#
+# Replace <your-actor-id> and the <…> placeholders below. The commit gate
+# requires status: complete and contract_accepted: true before you may commit;
+# everything else is provenance the ledger records about your onboarding.
+agent: <your-actor-id>
+status: complete
+contract_accepted: true
+onboarded_at: <ISO 8601>
+contract_accepted_at: <ISO 8601>
+spaces_contract_version: null
+onboard_spec_version: 0.1.0
