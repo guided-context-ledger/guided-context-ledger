@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { Vault } from "../src/vault.js";
+import { Workspace } from "../src/workspace.js";
 
 let root: string;
-let vault: Vault;
+let workspace: Workspace;
 
 before(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "gcl-test-"));
@@ -15,49 +15,49 @@ after(async () => {
   await fs.rm(root, { recursive: true, force: true });
 });
 beforeEach(async () => {
-  // fresh vault contents each test
+  // fresh workspace contents each test
   for (const e of await fs.readdir(root)) await fs.rm(path.join(root, e), { recursive: true, force: true });
-  vault = new Vault(root);
+  workspace = new Workspace(root);
 });
 
 test("write then read round-trips", async () => {
-  await vault.write("a.md", "# A\nhello\n");
-  assert.equal(await vault.read("a.md"), "# A\nhello\n");
+  await workspace.write("a.md", "# A\nhello\n");
+  assert.equal(await workspace.read("a.md"), "# A\nhello\n");
 });
 
 test("write creates parent folders", async () => {
-  await vault.write("deep/nested/note.md", "x");
-  assert.equal(await vault.read("deep/nested/note.md"), "x");
+  await workspace.write("deep/nested/note.md", "x");
+  assert.equal(await workspace.read("deep/nested/note.md"), "x");
 });
 
 test("append creates then appends", async () => {
-  await vault.append("log.md", "line1\n");
-  await vault.append("log.md", "line2\n");
-  assert.equal(await vault.read("log.md"), "line1\nline2\n");
+  await workspace.append("log.md", "line1\n");
+  await workspace.append("log.md", "line2\n");
+  assert.equal(await workspace.read("log.md"), "line1\nline2\n");
 });
 
 test("list finds nested notes, sorted, .md only, no dotfiles", async () => {
-  await vault.write("b.md", "1");
-  await vault.write("sub/a.md", "2");
-  await vault.write("notes.txt", "3"); // ignored: not .md
+  await workspace.write("b.md", "1");
+  await workspace.write("sub/a.md", "2");
+  await workspace.write("notes.txt", "3"); // ignored: not .md
   await fs.writeFile(path.join(root, ".hidden.md"), "4"); // ignored: dotfile
-  const list = await vault.list();
+  const list = await workspace.list();
   assert.deepEqual(list, ["b.md", "sub/a.md"]);
 });
 
 test("list scoped to a subfolder", async () => {
-  await vault.write("top.md", "1");
-  await vault.write("sub/inner.md", "2");
-  assert.deepEqual(await vault.list("sub"), ["sub/inner.md"]);
+  await workspace.write("top.md", "1");
+  await workspace.write("sub/inner.md", "2");
+  assert.deepEqual(await workspace.list("sub"), ["sub/inner.md"]);
 });
 
 test("list on a missing folder returns empty", async () => {
-  assert.deepEqual(await vault.list("nope"), []);
+  assert.deepEqual(await workspace.list("nope"), []);
 });
 
 test("search is case-insensitive and reports path + line", async () => {
-  await vault.write("x.md", "first\nMEMORY here\nlast\n");
-  const hits = await vault.search("memory");
+  await workspace.write("x.md", "first\nMEMORY here\nlast\n");
+  const hits = await workspace.search("memory");
   assert.equal(hits.length, 1);
   assert.equal(hits[0].path, "x.md");
   assert.equal(hits[0].line, 2);
@@ -65,31 +65,31 @@ test("search is case-insensitive and reports path + line", async () => {
 });
 
 test("search respects the limit", async () => {
-  await vault.write("y.md", "a\na\na\na\n");
-  assert.equal((await vault.search("a", 2)).length, 2);
+  await workspace.write("y.md", "a\na\na\na\n");
+  assert.equal((await workspace.search("a", 2)).length, 2);
 });
 
 test("search with no matches returns empty", async () => {
-  await vault.write("z.md", "nothing relevant");
-  assert.deepEqual(await vault.search("zzz"), []);
+  await workspace.write("z.md", "nothing relevant");
+  assert.deepEqual(await workspace.search("zzz"), []);
 });
 
 test("read of missing note throws", async () => {
-  await assert.rejects(() => vault.read("ghost.md"));
+  await assert.rejects(() => workspace.read("ghost.md"));
 });
 
 for (const bad of ["../escape.md", "../../etc/passwd", "sub/../../escape.md"]) {
   test(`path traversal blocked: ${bad}`, async () => {
-    await assert.rejects(() => vault.read(bad), /escapes the workspace/);
-    await assert.rejects(() => vault.write(bad, "x"), /escapes the workspace/);
-    await assert.rejects(() => vault.append(bad, "x"), /escapes the workspace/);
+    await assert.rejects(() => workspace.read(bad), /escapes the workspace/);
+    await assert.rejects(() => workspace.write(bad, "x"), /escapes the workspace/);
+    await assert.rejects(() => workspace.append(bad, "x"), /escapes the workspace/);
   });
 }
 
-test("vault with a space in its path works (path-with-space regression)", async () => {
+test("workspace with a space in its path works (path-with-space regression)", async () => {
   const spaced = path.join(root, "Spaced Dir");
   await fs.mkdir(spaced, { recursive: true });
-  const v = new Vault(spaced);
+  const v = new Workspace(spaced);
   await v.write("n.md", "ok");
   assert.equal(await v.read("n.md"), "ok");
   assert.deepEqual(await v.list(), ["n.md"]);

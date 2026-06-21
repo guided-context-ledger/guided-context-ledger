@@ -3,8 +3,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import {
-  Vault,
-  VaultError,
+  Workspace,
+  WorkspaceError,
   EventLog,
   EventError,
   GclLedger,
@@ -35,7 +35,7 @@ const VERSION = "0.1.0";
 const envPath = process.env.GCL_WORKSPACE?.trim();
 const hasRealPath = !!envPath && envPath.length > 0 && !envPath.includes("${");
 const WORKSPACE_PATH = hasRealPath ? (envPath as string) : process.cwd();
-const vault = new Vault(WORKSPACE_PATH);
+const workspace = new Workspace(WORKSPACE_PATH);
 const events = new EventLog(WORKSPACE_PATH);
 const ledger = new GclLedger(WORKSPACE_PATH);
 
@@ -90,7 +90,7 @@ async function safe(fn: () => Promise<ToolResult>): Promise<ToolResult> {
   try {
     return await fn();
   } catch (err) {
-    if (err instanceof VaultError) {
+    if (err instanceof WorkspaceError) {
       return fail(
         `${err.message}\nFix: set GCL_WORKSPACE to an existing directory, then fully restart the client.`
       );
@@ -105,10 +105,10 @@ async function safe(fn: () => Promise<ToolResult>): Promise<ToolResult> {
 
 /** If the workspace root is unusable, return a clear misconfiguration message; otherwise null. */
 async function workspaceProblem(): Promise<string | null> {
-  const { exists, isDirectory } = await vault.rootStatus();
+  const { exists, isDirectory } = await workspace.rootStatus();
   if (!exists)
-    return `Workspace folder does not exist: ${vault.root}\nFix: set GCL_WORKSPACE to an existing directory, then fully restart the client.`;
-  if (!isDirectory) return `Workspace path is not a folder: ${vault.root}`;
+    return `Workspace folder does not exist: ${workspace.root}\nFix: set GCL_WORKSPACE to an existing directory, then fully restart the client.`;
+  if (!isDirectory) return `Workspace path is not a folder: ${workspace.root}`;
   return null;
 }
 
@@ -134,7 +134,7 @@ server.tool(
       // guidance degrades gracefully.
       let manifestMd: string | null = null;
       try {
-        manifestMd = await vault.read("workspace.manifest.md");
+        manifestMd = await workspace.read("workspace.manifest.md");
       } catch {
         /* manifest absent — registry + guidance degrade gracefully */
       }
@@ -163,7 +163,7 @@ server.tool(
       };
       for (const c of candidates) {
         try {
-          const fm = parseFrontmatter(await vault.read(c.path));
+          const fm = parseFrontmatter(await workspace.read(c.path));
           profile = { path: c.path, present: true, kind: entry?.kind ?? c.kind, status: fm.status ?? null, summary: fm.summary ?? null };
           break;
         } catch {
@@ -174,7 +174,7 @@ server.tool(
       const actorDir = (profile.path as string).replace(/\/[^/]+$/, "");
       let capabilitiesPresent = false;
       try {
-        await vault.read(`${actorDir}/capabilities.md`);
+        await workspace.read(`${actorDir}/capabilities.md`);
         capabilitiesPresent = true;
       } catch {
         /* optional */
@@ -183,7 +183,7 @@ server.tool(
       let constraints: Record<string, unknown> = { present: false, rules: null };
       for (const p of ["spaces/constraints.md", "spaces/compliance.md"]) {
         try {
-          const c = await vault.read(p);
+          const c = await workspace.read(p);
           constraints = { present: true, path: p, rules: extractYamlRules(c) };
           break;
         } catch {
@@ -191,7 +191,7 @@ server.tool(
         }
       }
 
-      const spaces = await vault.list("spaces");
+      const spaces = await workspace.list("spaces");
       const ov = await events.overview(actor);
       const needsMe = ov.threads.filter((t) => t.needs_me).map((t) => t.thread);
       const openForMe = ov.open_for_me;
@@ -227,7 +227,7 @@ server.tool(
         actor,
         server: "guided-context-ledger",
         server_version: VERSION,
-        workspace: { path: vault.root },
+        workspace: { path: workspace.root },
         profile,
         capabilities_present: capabilitiesPresent,
         constraints,
@@ -248,20 +248,20 @@ server.tool(
   {},
   () =>
     safe(async () => {
-      const { exists, isDirectory } = await vault.rootStatus();
+      const { exists, isDirectory } = await workspace.rootStatus();
       const lines = [
         `Server: guided-context-ledger v${VERSION}`,
-        `Workspace path: ${vault.root}`,
+        `Workspace path: ${workspace.root}`,
         `Exists: ${exists ? "yes" : "no"}`,
         `Is directory: ${isDirectory ? "yes" : "no"}`,
       ];
-      const noteCount = exists && isDirectory ? (await vault.list()).length : null;
+      const noteCount = exists && isDirectory ? (await workspace.list()).length : null;
       if (noteCount !== null) lines.push(`Notes: ${noteCount}`);
       else lines.push("⚠ Misconfigured — set GCL_WORKSPACE to an existing folder and fully restart the client.");
       return okStruct(lines.join("\n"), {
         server: "guided-context-ledger",
         version: VERSION,
-        path: vault.root,
+        path: workspace.root,
         exists,
         is_directory: isDirectory,
         notes: noteCount,
@@ -277,7 +277,7 @@ server.tool(
     safe(async () => {
       const problem = await workspaceProblem();
       if (problem) return fail(problem);
-      const notes = await vault.list(subfolder ?? "");
+      const notes = await workspace.list(subfolder ?? "");
       return okStruct(notes.length ? notes.join("\n") : "(workspace is reachable but contains no notes yet)", { notes });
     })
 );
@@ -289,8 +289,8 @@ server.tool(
   ({ path: p }) =>
     safe(async () => {
       try {
-        const text = await vault.read(p);
-        const hash = await vault.hashOf(p);
+        const text = await workspace.read(p);
+        const hash = await workspace.hashOf(p);
         return okStruct(text, { path: p, hash, content: text });
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
@@ -314,7 +314,7 @@ server.tool(
       if (!query.trim()) return fail("Provide a non-empty search query.");
       const problem = await workspaceProblem();
       if (problem) return fail(problem);
-      const hits = await vault.search(query, limit ?? 50);
+      const hits = await workspace.search(query, limit ?? 50);
       const text = hits.length ? hits.map((h) => `${h.path}:${h.line}: ${h.text}`).join("\n") : `(no matches for "${query}")`;
       return okStruct(text, { matches: hits });
     })
@@ -334,10 +334,10 @@ server.tool(
   ({ path: p, content, expected_hash }) =>
     safe(async () => {
       try {
-        const { hash } = await vault.write(p, content, expected_hash);
+        const { hash } = await workspace.write(p, content, expected_hash);
         return okStruct(`Wrote ${p}`, { path: p, hash });
       } catch (err) {
-        if (err instanceof VaultError && err.code === "CONFLICT") {
+        if (err instanceof WorkspaceError && err.code === "CONFLICT") {
           const cur = (err.detail?.current_hash as string) ?? "";
           return failStruct(`${err.message} Re-read it, merge, and retry with expected_hash="${cur}".`, {
             conflict: true,
@@ -360,7 +360,7 @@ server.tool(
   },
   ({ path: p, content }) =>
     safe(async () => {
-      await vault.append(p, content);
+      await workspace.append(p, content);
       return ok(`Appended to ${p}`);
     })
 );
@@ -492,7 +492,7 @@ server.tool(
       for (const a of input.artifacts) {
         let content: string;
         try {
-          content = await vault.read(a.path);
+          content = await workspace.read(a.path);
         } catch {
           return fail(`Cannot commit "${a.path}": no such file in the workspace. Write it first, then commit.`);
         }
@@ -569,12 +569,12 @@ server.tool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  const { exists, isDirectory } = await vault.rootStatus();
+  const { exists, isDirectory } = await workspace.rootStatus();
   let health = "";
   if (!exists) health = "  ⚠ MISCONFIGURED: this path does not exist — set GCL_WORKSPACE and fully restart.";
   else if (!isDirectory) health = "  ⚠ MISCONFIGURED: this path is not a folder.";
   // Log to stderr so we never corrupt the stdio JSON-RPC stream on stdout.
-  console.error(`[guided-context-ledger v${VERSION}] MCP connector running. Workspace: ${vault.root}${health}`);
+  console.error(`[guided-context-ledger v${VERSION}] MCP connector running. Workspace: ${workspace.root}${health}`);
 }
 
 main().catch((err) => {

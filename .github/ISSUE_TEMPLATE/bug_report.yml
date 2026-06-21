@@ -1,0 +1,48 @@
+name: Bug report
+description: Tell us about reproducible incorrect behavior
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve GCL. Do not include secrets, personal information, or vulnerability details here.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide the smallest useful sequence of steps or example.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: GCL version or commit
+      placeholder: 0.1.0-alpha or commit SHA
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: OS, Node.js version, package or connector
+  - type: textarea
+    id: provenance
+    attributes:
+      label: Relevant provenance context
+      description: Optional revision IDs, sanitized logs, or invariant involved. Do not paste private ledger content.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Public-report checks
+      options:
+        - label: I removed secrets, personal information, and other sensitive data.
+          required: true
+        - label: This is not a privately reportable security vulnerability.
+          required: true

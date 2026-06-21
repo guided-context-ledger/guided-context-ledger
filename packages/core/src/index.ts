@@ -1,5 +1,46 @@
-export { Vault, VaultError } from "./vault.js";
-export { EventLog, EventError, EVENT_TYPES, CLAIM_STATUSES, DEFAULT_LEASE_MS } from "./events.js";
-export type { AgentEvent, EventType, ThreadOverview, OpenForMeItem, ClaimStatus, ClaimState, AppendOptions } from "./events.js";
+export { Workspace, WorkspaceError } from "./workspace.js";
+export {
+  EventLog,
+  EventError,
+  EVENT_TYPES,
+  CLAIM_STATUSES,
+  DEFAULT_LEASE_MS,
+  TASK_STATUSES,
+  SUCCESSION_RELATIONS,
+  TASK_CONDITIONS,
+  DECLARABLE_CONDITIONS,
+  CONDITION_STATES,
+  TASK_AUTHORIZATIONS,
+  TASK_PULL_POLICIES,
+  DEFAULT_TASK_PULL_POLICY,
+} from "./events.js";
+export type {
+  AgentEvent,
+  EventType,
+  ThreadOverview,
+  OpenForMeItem,
+  CausalResponse,
+  ClaimStatus,
+  ClaimState,
+  AppendOptions,
+  TaskStatus,
+  SuccessionRelation,
+  TaskCondition,
+  ConditionFlag,
+  DeclarableCondition,
+  ConditionState,
+  DeclaredCondition,
+  TaskAuthorization,
+  TaskPullPolicy,
+  TaskScope,
+  TaskTruth,
+  StaleReason,
+  TaskEligibility,
+  TaskProjection,
+  TerminalAttempt,
+  TaskRow,
+  TaskPoolOptions,
+  StalenessAssessment,
+} from "./events.js";
 export { GclLedger, LedgerError, sha256Text, canonicalizePrincipal, versionGte, STAMPED_FROM } from "./ledger.js";
 export type { RevisionArtifact, RevisionEnvelope, RevisionRecord, ActionProvenance, PrincipalSource } from "./ledger.js";

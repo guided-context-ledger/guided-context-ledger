@@ -1,0 +1,36 @@
+name: Feature request
+description: Propose an improvement to GCL
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. GCL is in alpha; substantial protocol or schema changes begin with design discussion.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem or workflow should this improve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed direction
+      description: Describe the smallest useful change.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility or provenance impact
+      description: Optional. Note effects on schemas, ledger history, identity, revisions, or existing consumers.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Public-report check
+      options:
+        - label: I have not included private, personal, secret, or otherwise sensitive information.
+          required: true

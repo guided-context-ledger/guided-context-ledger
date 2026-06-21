@@ -3,18 +3,18 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 
 /**
- * Raised when the vault root itself is unusable (missing or not a directory).
- * Distinct from a missing note: we never silently create the vault root — the
+ * Raised when the workspace root itself is unusable (missing or not a directory).
+ * Distinct from a missing note: we never silently create the workspace root — the
  * user points us at an existing folder (locked decision: no auto-created default).
  */
-export class VaultError extends Error {
+export class WorkspaceError extends Error {
   constructor(
     message: string,
-    readonly code: "VAULT_MISSING" | "VAULT_NOT_DIR" | "CONFLICT",
+    readonly code: "WORKSPACE_MISSING" | "WORKSPACE_NOT_DIR" | "CONFLICT",
     readonly detail?: Record<string, unknown>
   ) {
     super(message);
-    this.name = "VaultError";
+    this.name = "WorkspaceError";
   }
 }
 
@@ -23,20 +23,20 @@ const LOCK_STALE_MS = 4_000;
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Vault: all read/write operations against a single markdown vault directory.
+ * Workspace: all read/write operations against a single markdown workspace directory.
  *
  * Design rule (locked decision): the markdown files ARE the source of truth.
  * Nothing here hides data in a database. Every operation is a plain file op,
- * confined to the vault root so an agent can never read or write outside it.
+ * confined to the workspace root so an agent can never read or write outside it.
  */
-export class Vault {
+export class Workspace {
   readonly root: string;
 
   constructor(root: string) {
     this.root = path.resolve(root);
   }
 
-  /** Resolve a vault-relative path and guarantee it stays inside the vault. */
+  /** Resolve a workspace-relative path and guarantee it stays inside the workspace. */
   private resolveInside(relPath: string): string {
     const full = path.resolve(this.root, relPath);
     const rel = path.relative(this.root, full);
@@ -46,7 +46,7 @@ export class Vault {
     return full;
   }
 
-  /** Does the vault root exist, and is it a directory? Never throws. */
+  /** Does the workspace root exist, and is it a directory? Never throws. */
   async rootStatus(): Promise<{ exists: boolean; isDirectory: boolean }> {
     try {
       const s = await fs.stat(this.root);
@@ -57,18 +57,18 @@ export class Vault {
   }
 
   /**
-   * Guarantee the vault root is usable before a write. We create notes and
-   * sub-folders inside the vault on demand, but never conjure the root itself —
-   * a missing root means a misconfigured Vault folder, which must be signaled,
+   * Guarantee the workspace root is usable before a write. We create notes and
+   * sub-folders inside the workspace on demand, but never conjure the root itself —
+   * a missing root means a misconfigured workspace folder, which must be signaled,
    * not silently created somewhere unexpected.
    */
   private async assertRootUsable(): Promise<void> {
     const { exists, isDirectory } = await this.rootStatus();
     if (!exists) {
-      throw new VaultError(`Workspace folder does not exist: ${this.root}`, "VAULT_MISSING");
+      throw new WorkspaceError(`Workspace folder does not exist: ${this.root}`, "WORKSPACE_MISSING");
     }
     if (!isDirectory) {
-      throw new VaultError(`Workspace path is not a folder: ${this.root}`, "VAULT_NOT_DIR");
+      throw new WorkspaceError(`Workspace path is not a folder: ${this.root}`, "WORKSPACE_NOT_DIR");
     }
   }
 
@@ -97,7 +97,7 @@ export class Vault {
           if (e.code === "EEXIST") continue; // lock vanished between checks
         }
         if (Date.now() - start > LOCK_TIMEOUT_MS) {
-          throw new VaultError(`Could not acquire the write lock for this note (busy).`, "CONFLICT", { reason: "lock_timeout" });
+          throw new WorkspaceError(`Could not acquire the write lock for this note (busy).`, "CONFLICT", { reason: "lock_timeout" });
         }
         await sleep(2 + Math.floor(Math.random() * 8));
       }
@@ -107,7 +107,7 @@ export class Vault {
     await fs.unlink(lock).catch(() => {});
   }
 
-  /** List every markdown note, optionally under a sub-folder. Returns vault-relative paths. */
+  /** List every markdown note, optionally under a sub-folder. Returns workspace-relative paths. */
   async list(subfolder = ""): Promise<string[]> {
     const start = this.resolveInside(subfolder);
     const out: string[] = [];
@@ -187,7 +187,7 @@ export class Vault {
     try {
       const current = await this.hashOf(relPath);
       if (current !== expectedHash) {
-        throw new VaultError(
+        throw new WorkspaceError(
           `Write conflict on ${relPath}: the note changed since you read it.`,
           "CONFLICT",
           { current_hash: current, expected_hash: expectedHash }

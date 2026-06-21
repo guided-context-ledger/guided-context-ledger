@@ -19,7 +19,7 @@ beforeEach(async () => {
   log = new EventLog(root);
 });
 
-test("overview of an empty vault has no threads", async () => {
+test("overview of an empty workspace has no threads", async () => {
   const ov = await log.overview("claude");
   assert.deepEqual(ov.threads, []);
 });
@@ -112,6 +112,55 @@ test("open_for_me clears only after the addressee causally responds", async () =
   assert.equal(ov.open_for_me.length, 0, "causal response claims/closes the obligation");
   const t = ov.threads.find((x) => x.thread === "t")!;
   assert.equal(t.needs_me, false);
+});
+
+// --- cross-thread causal discharge (the GCL coordination spec: thread location must not hide resolution) ---
+
+test("a causal reply in ANOTHER thread discharges the obligation (the reproduced desync bug)", async () => {
+  // codex asks in thread 'alpha', addressed to claude-code, requires a response.
+  await log.append("alpha", "codex", "answer the questions", "handoff", null, { addressedTo: ["claude-code"] });
+  let ov = await log.overview("claude-code");
+  assert.equal(ov.open_for_me.length, 1, "owed before any reply");
+
+  // claude-code replies in a DIFFERENT thread, but causally parents the owed event (alpha#1).
+  await log.append("beta", "claude-code", "answered over here", "handoff", "alpha#1");
+
+  ov = await log.overview("claude-code");
+  assert.equal(ov.open_for_me.length, 0, "a cross-thread causal reply discharges — the invariant");
+  assert.equal(ov.threads.find((x) => x.thread === "alpha")!.needs_me, false);
+});
+
+test("an off-thread NON-causal reply does NOT discharge — related, not answered", async () => {
+  await log.append("alpha", "codex", "answer here", "handoff", null, { addressedTo: ["claude-code"] });
+  // a reply in another thread parented to something ELSE (a stale message) — related context, not a discharge.
+  await log.append("beta", "claude-code", "off-topic-ish", "message", null, {});
+  const ov = await log.overview("claude-code");
+  assert.equal(ov.open_for_me.length, 1, "no causal edge to the owed event → obligation stays open");
+});
+
+test("an owed event whose parent is in another thread carries cross_thread:true (split signal)", async () => {
+  // The discussion's earlier root lives in 'alpha'; the owed event continues it from 'beta'.
+  await log.append("alpha", "codex", "root of the discussion", "message", null, {});
+  await log.append("beta", "codex", "continuing; claude-code please answer", "handoff", "alpha#1", { addressedTo: ["claude-code"] });
+  const ov = await log.overview("claude-code");
+  const item = ov.open_for_me.find((o) => o.event_id === "beta#1")!;
+  assert.ok(item, "owed item present");
+  assert.equal(item.cross_thread, true, "flags the cross-thread discussion split");
+});
+
+test("causalResponses projects the addresser-side 'answered in …' view across threads", async () => {
+  await log.append("alpha", "codex", "please answer", "handoff", null, { addressedTo: ["claude-code"] });
+  await log.append("beta", "claude-code", "answered over here", "handoff", "alpha#1");
+
+  const responses = await log.causalResponses("alpha#1");
+  assert.equal(responses.length, 1);
+  assert.equal(responses[0].thread, "beta");
+  assert.equal(responses[0].actor, "claude-code");
+  assert.equal(responses[0].cross_thread, true, "the answer landed in a different thread");
+
+  // a claim is not an answer; filtering by actor works
+  await log.append("beta", "someone-else", "noise", "message", "alpha#1");
+  assert.equal((await log.causalResponses("alpha#1", { byActor: "claude-code" })).length, 1);
 });
 
 test("requires_response defaults by type and can be overridden", async () => {

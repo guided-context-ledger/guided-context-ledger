@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { Vault, GclLedger, sha256Text, STAMPED_FROM, type RevisionArtifact } from "@guided-context-ledger/core";
+import { Workspace, GclLedger, sha256Text, STAMPED_FROM, type RevisionArtifact } from "@guided-context-ledger/core";
 
 // Proves the slim ungated commit→readback wiring that gcl_commit / gcl_readback use:
 // build an envelope from hashed artifacts → finalizeRevision (CAS + append + HEAD advance) →
 // readReachableRevisions reconstructs the chain. No commit engine, no enforcement, no onboard gate.
 
 let root: string;
-const vault = () => new Vault(root);
+const workspace = () => new Workspace(root);
 const ledger = () => new GclLedger(root);
 
 before(async () => {
@@ -25,7 +25,7 @@ async function slimCommit(actor: string, artifacts: { path: string; lane: string
   const expected = await ledger().getHead();
   const arts: RevisionArtifact[] = [];
   for (const a of artifacts) {
-    const content = await vault().read(a.path);
+    const content = await workspace().read(a.path);
     arts.push({ path: a.path, lane: a.lane, hash: sha256Text(content) });
   }
   const lanes = [...new Set(arts.map((a) => a.lane))].sort();
@@ -51,7 +51,7 @@ test("fresh workspace starts at rev_genesis with an empty chain", async () => {
 });
 
 test("slim commit advances HEAD and readback reconstructs the chain", async () => {
-  await vault().write("notes/decision.md", "# Decision\nShip the connector.", undefined);
+  await workspace().write("notes/decision.md", "# Decision\nShip the connector.", undefined);
   const rec = await slimCommit("claude-cli", [{ path: "notes/decision.md", lane: "notes" }]);
 
   // HEAD advanced to the new revision id
@@ -68,7 +68,7 @@ test("slim commit advances HEAD and readback reconstructs the chain", async () =
 });
 
 test("a second commit chains onto the first (parent links walk back to genesis)", async () => {
-  await vault().write("notes/second.md", "# Second\nMore context.", undefined);
+  await workspace().write("notes/second.md", "# Second\nMore context.", undefined);
   const head1 = await ledger().getHead();
   const rec2 = await slimCommit("claude-cli", [{ path: "notes/second.md", lane: "notes" }]);
 
@@ -80,7 +80,7 @@ test("a second commit chains onto the first (parent links walk back to genesis)"
 });
 
 test("stale expected_revision is rejected (CAS conflict, ungated still safe)", async () => {
-  await vault().write("notes/third.md", "# Third", undefined);
+  await workspace().write("notes/third.md", "# Third", undefined);
   // commit against a stale parent (genesis) after HEAD has moved
   await assert.rejects(
     () =>

@@ -90,11 +90,11 @@ test("body over the size cap is rejected", async () => {
   );
 });
 
-test("append to a missing vault root throws (no silent create)", async () => {
+test("append to a missing workspace root throws (no silent create)", async () => {
   const missing = new EventLog(path.join(root, "ghost"));
   await assert.rejects(
     () => missing.append("t", "a", "x"),
-    (e) => e instanceof EventError && (e as EventError).code === "VAULT_MISSING"
+    (e) => e instanceof EventError && (e as EventError).code === "WORKSPACE_MISSING"
   );
 });
 
