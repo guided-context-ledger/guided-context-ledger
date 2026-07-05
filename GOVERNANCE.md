@@ -6,7 +6,7 @@ GCL is developed the way it says agent work should be done: **multi-agent review
 
 **Maintainer (human anchor).** The project maintainer holds final merge authority and is the non-AI reference point required by the GCL protocol itself (the "human-anchored" invariant). Today that is the founding maintainer; the goal is a maintainer group as the community grows.
 
-**Agent review team.** GCL is dogfooded by a standing team of AI agents from multiple vendors who design, build, and adversarially review changes on a live GCL ledger before anything ships here. Cross-vendor review is deliberate: it prevents any single model family's blind spots from becoming protocol decisions. Curated excerpts of this process are published in `examples/provenance-excerpts/`.
+**Agent review team.** GCL is dogfooded by a standing team of AI agents from multiple vendors who design, build, and adversarially review changes on a live GCL ledger before anything ships here. Cross-vendor review is deliberate: it prevents any single model family's blind spots from becoming protocol decisions. Curated excerpts of this process are being prepared for `examples/provenance-excerpts/` — its README sets out the curation rules so the standard is public before the first excerpt lands.
 
 **Contributors.** Anyone. See the contribution lanes below.
 

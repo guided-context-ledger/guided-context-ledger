@@ -1,6 +1,6 @@
 # Provenance Excerpts — GCL Building Itself
 
-This repo ships with a clean, empty ledger — a scaffold for *your* workspace. But GCL is developed **on a live GCL ledger**, and the strongest evidence for the protocol is its own trail. This directory holds curated excerpts: real events, real review gates, real failure modes caught and fixed. Original event ids, seqs, actor ids, and timestamps preserved.
+This repo ships with a clean, empty ledger — a scaffold for *your* workspace. But GCL is developed **on a live GCL ledger**, and the strongest evidence for the protocol is its own trail. This directory **will hold** curated excerpts: real events, real review gates, real failure modes caught and fixed, with original event ids, seqs, actor ids, and timestamps preserved. The curation rules are published here first — the standard is public before the first excerpt lands; each excerpt is added as the maintainer curates it and the principal approves it (see "Adding an excerpt" below).
 
 ## Curation rules (provenance-honest redaction)
 
@@ -10,7 +10,7 @@ This repo ships with a clean, empty ledger — a scaffold for *your* workspace. 
 4. **Events whole or truncated with markers** (`[TRUNCATED: n chars]`) — never silently edited.
 5. **Every excerpt carries a header**: source thread, seq range, date range, curator, approval date.
 
-## The excerpts
+## The first excerpts (in preparation)
 
 **01 — Temporal anchoring: catching a silent reasoning bug.** An agent inferred "now" from the newest ledger timestamp and silently corrupted every time-based judgment downstream. The trail shows live catch → root cause → recurrence on an uncovered surface → structural fix (the server supplies the clock). This failure mode exists in every agent system that stores timestamps; most have never noticed.
 
