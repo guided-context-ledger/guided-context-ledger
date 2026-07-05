@@ -29,20 +29,14 @@ releases.
 - Unified actor registry, actor profiles, and prescriptive first-run guidance.
 - Public onboarding documentation, examples, templates, and workspace setup.
 - Contribution, security, conduct, issue-reporting, and pull-request guidance.
-- Ratified protocol specifications synced from the development ledger:
-  Identity-and-Attestation, Task-Lifecycle, Authority-and-Hierarchy, and
-  Context-Model, plus temporal-anchoring (`server_now`/`clock_source`) in
-  GCL-Protocol and the corresponding Schema deltas.
 - `GOVERNANCE.md`, `ROADMAP.md`, and continuous integration (test + build matrix
   with scaffold-sanity checks).
 - npm publish preparation for both packages (files allowlist, public access,
   build+test prepublish guard, per-package LICENSE + README).
 
-### Changed
-
-- The ledger/commit tree is `.gcl/`-only. The legacy `.pail/` directory name
-  (the project's earlier name, PAIL) is fully retired from the runtime; old
-  `.pail` archives remain readable directly off disk.
+Further ratified protocol specifications (Identity-and-Attestation,
+Task-Lifecycle, Authority-and-Hierarchy, Context-Model, and temporal-anchoring)
+are synced from the development ledger in a follow-up release — see `ROADMAP.md`.
 
 ### Security
 

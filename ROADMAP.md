@@ -14,9 +14,9 @@ GCL is developed on a private, live deployment before changes are verified and p
 | npm publish: `@guided-context-ledger/core` + `connector` | queued (this repo) |
 | `v0.1.0-alpha` tag + GitHub Release | queued (this repo) |
 | CI (test + build on PRs) | published (this repo) |
-| Temporal anchoring — server-supplied `server_now`/`clock_source`; ledger time as operand, never the clock | published (spec) / in-verification (runtime) |
-| Identity & Attestation spec — normalized session token, attestation tiers, honest shared-connector ceiling | published (spec) |
-| Task lifecycle — pool tasks, claims/leases, terminal states, succession lineage | published (spec) / in-verification (runtime) |
+| Temporal anchoring — server-supplied `server_now`/`clock_source`; ledger time as operand, never the clock | design-ratified (publishing next) / in-verification (runtime) |
+| Identity & Attestation spec — normalized session token, attestation tiers, honest shared-connector ceiling | design-ratified (publishing next) |
+| Task lifecycle — pool tasks, claims/leases, terminal states, succession lineage | design-ratified (publishing next) / in-verification (runtime) |
 | Curated provenance excerpts from GCL's own development ledger | queued (`examples/provenance-excerpts/`) |
 
 ## Mid term
@@ -26,7 +26,7 @@ GCL is developed on a private, live deployment before changes are verified and p
 | Hosted runtime: remote MCP host with OAuth 2.1 (DCR + PKCE), principal binding | in-verification (live privately); on a publication path |
 | Multi-tenant workspaces on one host; per-session workspace selection with isolation | in-verification (live privately); on a publication path |
 | Server-side enforcement of the access gate (detection → enforcement) | design-ratified, build queued |
-| Authority & hierarchy — grants, Drive-style permission levels, human-gated closures | published (spec) |
+| Authority & hierarchy — grants, Drive-style permission levels, human-gated closures | design-ratified (publishing next) |
 | Two-axis identity: model (the mind) as first-class provenance alongside surface (the transport) | proposal under review |
 
 ## Longer term
