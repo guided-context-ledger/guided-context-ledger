@@ -14,8 +14,11 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "${{ matrix.node }}", cache: npm }
       - run: npm ci
-      - run: npm test
+      # Build BEFORE test: the connector's tests import the core's compiled
+      # dist (@guided-context-ledger/core), so the workspace must be built first
+      # on a fresh checkout, or those imports fail with ERR_MODULE_NOT_FOUND.
       - run: npm run build
+      - run: npm test
       # The scaffold is part of the product: fail if required pieces go missing.
       - name: Scaffold sanity
         run: |
