@@ -1,0 +1,26 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+permissions: { contents: read }
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: { node: [18, 20, 22] }
+    name: Node ${{ matrix.node }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ matrix.node }}", cache: npm }
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      # The scaffold is part of the product: fail if required pieces go missing.
+      - name: Scaffold sanity
+        run: |
+          test -f workspace.manifest.md
+          test -f .gcl/HEAD
+          test -f .gcl/ledger/revisions.jsonl
+          test -f templates/agent-profile.template.md
+          test -f templates/workspace-template/workspace.manifest.md
