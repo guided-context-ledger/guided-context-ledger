@@ -7,10 +7,13 @@
   "bin": { "gcl-connector": "dist/index.js" },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": ["dist", "README.md", "LICENSE", "NOTICE"],
+  "publishConfig": { "access": "public" },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts",
+    "prepublishOnly": "npm run build && npm test"
   },
   "engines": { "node": ">=18" },
   "repository": {
@@ -19,7 +22,7 @@
     "directory": "packages/connector"
   },
   "dependencies": {
-    "@guided-context-ledger/core": "*",
+    "@guided-context-ledger/core": "0.1.0",
     "@modelcontextprotocol/sdk": "^1.12.0",
     "zod": "^3.23.8"
   },

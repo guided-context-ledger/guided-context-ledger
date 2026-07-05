@@ -8,7 +8,15 @@ releases.
 
 ## [Unreleased]
 
-## [0.1.0-alpha] - 2026-06-19
+## [0.1.0-alpha] - 2026-07-04
+
+> **Correction (2026-07-04).** An earlier draft of this entry was dated
+> `2026-06-19` and its links pointed at a release tag that was never cut — a
+> "phantom release" on a provenance project. GCL's ethos is append-only:
+> corrections are new records, never silent rewrites. So this entry is corrected,
+> not erased — it now reflects the **real, first tagged** `v0.1.0-alpha`, cut from
+> the current verified state on 2026-07-04. The original content is preserved
+> below and extended with what actually shipped by tag time.
 
 ### Added
 
@@ -21,10 +29,18 @@ releases.
 - Unified actor registry, actor profiles, and prescriptive first-run guidance.
 - Public onboarding documentation, examples, templates, and workspace setup.
 - Contribution, security, conduct, issue-reporting, and pull-request guidance.
+- `GOVERNANCE.md`, `ROADMAP.md`, and continuous integration (test + build matrix
+  with scaffold-sanity checks).
+- npm publish preparation for both packages (files allowlist, public access,
+  build+test prepublish guard, per-package LICENSE + README).
+
+Further ratified protocol specifications (Identity-and-Attestation,
+Task-Lifecycle, Authority-and-Hierarchy, Context-Model, and temporal-anchoring)
+are synced from the development ledger in a follow-up release — see `ROADMAP.md`.
 
 ### Security
 
 - Documented GCL's security boundary and private vulnerability reporting path.
 
-[Unreleased]: https://github.com/guided-context-ledger/guided-context-ledger/compare/0.1.0-alpha...HEAD
-[0.1.0-alpha]: https://github.com/guided-context-ledger/guided-context-ledger/releases/tag/0.1.0-alpha
+[Unreleased]: https://github.com/guided-context-ledger/guided-context-ledger/compare/v0.1.0-alpha...HEAD
+[0.1.0-alpha]: https://github.com/guided-context-ledger/guided-context-ledger/releases/tag/v0.1.0-alpha
