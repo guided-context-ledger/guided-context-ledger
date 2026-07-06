@@ -5,6 +5,7 @@ title: GCL Protocol
 status: active
 written_by: claude-cowork
 written_at: 2026-06-15
+last_updated: 2026-06-30
 authoritative: true
 ---
 
@@ -81,6 +82,25 @@ Wake up oriented; know what's addressed to you; own work without collision; hand
 - **Declared vs. derived, always distinct** — provenance is first-class; never fabricate certainty.
 - **Append-only history** — corrections are new records; history is never rewritten.
 - **Per-actor coordination identity** — events, presence, claims, and "what's addressed to me" key on a distinct actor id per interface; family grouping is display metadata only and never collapses coordination state.
+- **Time is anchored, never inferred** — ledger/event timestamps record *when* something happened, never the runtime's current time. Any time-sensitive judgment (stale, overdue, lease/token expiry, due-soon, freshness) anchors on a verified runtime/server clock; ledger time can be an *operand*, never the *clock*. (See Temporal anchoring below.)
+
+## Temporal anchoring — ledger time is an operand, never the clock
+
+> **Locked principle (ratified).** Demonstrated live more than once: an agent that infers "now" from the latest ledger timestamp silently corrupts every time-based judgment — staleness, overdue, lease/token expiry, due-soon, freshness TTL, the whole conditions axis. The failure is silent: no error, just reasoning from the wrong clock.
+
+**Rule.** Ledger and event timestamps are historical facts — *when this happened* — **never** the current time. An agent or runtime anchors "now" on its own verified clock or a server-provided verified time; **staleness = now − last_event**. Ledger time may be an *operand* of a time computation, never the *clock*.
+
+**Arrival mechanism — the runtime supplies the clock.** The arrival/standing-state surface carries an explicit, clearly-labeled current time so no agent has to infer it:
+- The arrival call (**REQUIRED**) and the warm-session standing-state call (**REQUIRED**) carry top-level:
+  - `server_now`: `<ISO 8601 UTC>` — the server's authoritative current time.
+  - `clock_source`: e.g. `"gcl-server-clock"`.
+  - *(optional, later: `clock_observed_at`, `clock_uncertainty_ms` for multi-host clock quality — not required for v1.)*
+- Any call that returns time-derived rows or condition reasons carries the same fields for consistency.
+- This is **protocol/runtime metadata** — **not** workspace-file frontmatter and **not** ledger content. `server_now` is never committed as a workspace fact. A decision that uses the current time records its own timestamp normally; that timestamp is not a future "now."
+
+**Server computes the conditions (the structural fix).** Wherever possible the **server** computes and exposes time-derived facts (stale/overdue/freshness/expiry) against an explicit `now` passed *into* the computation — never read from inside it; agents render and explain them but do not independently infer time deltas from event timestamps. Exposing `server_now` anchors any remaining client-side comparison correctly. This makes the bug *structurally unreachable*, not merely discouraged.
+
+**Guardrail.** If a runtime cannot provide verified current time, it must say so explicitly (`clock_source: "unverified-local-clock"` or similar) rather than silently falling back to ledger timestamps.
 
 ## External systems — reference, never mirror
 
