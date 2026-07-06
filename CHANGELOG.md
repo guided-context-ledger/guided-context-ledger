@@ -8,6 +8,25 @@ releases.
 
 ## [Unreleased]
 
+### Added
+
+- **Spec sync — five ratified specifications published to `spec/`.** Synced from
+  the private development workspace with a redaction pass (live hosts and ids,
+  internal implementation paths, and workspace-internal references removed;
+  personal and product-name context generalized):
+  - `spec/GCL-Protocol.md` — temporal anchoring (ledger time is an operand, never
+    the clock; `server_now`/`clock_source` on arrival surfaces) plus the
+    "time is anchored, never inferred" invariant.
+  - `spec/Identity-and-Attestation.md` (new) — the normalized `GclSessionToken`,
+    attestation tiers, and the honest shared-connector ceiling.
+  - `spec/Task-Lifecycle.md` (new) — work/contract/outcome completion states, the
+    assumption + complexity gates, closure types, and the `task_verification` lane.
+  - `spec/Authority-and-Hierarchy.md` (new) — the four-level hierarchy, the
+    Drive-style permission/grant model, and the verified-actor seam.
+  - `spec/Schema.md` — manifest identity block, capability tokens, note-write
+    attribution, cross-workspace `cross_ref`, identity-session and
+    onboarding-status records, and the `principal_source` provenance axis.
+
 ## [0.1.0-alpha] - 2026-07-04
 
 > **Correction (2026-07-04).** An earlier draft of this entry was dated
