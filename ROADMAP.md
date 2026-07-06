@@ -11,8 +11,8 @@ GCL is developed on a private, live deployment before changes are verified and p
 
 | Item | Stage |
 | --- | --- |
-| npm publish: `@guided-context-ledger/core` + `connector` | queued (this repo) |
-| `v0.1.0-alpha` tag + GitHub Release | queued (this repo) |
+| npm publish: `@guided-context-ledger/core` + `connector` | published (this repo) |
+| `v0.1.0-alpha` tag + GitHub Release | published (this repo) |
 | CI (test + build on PRs) | published (this repo) |
 | Temporal anchoring — server-supplied `server_now`/`clock_source`; ledger time as operand, never the clock | published (spec, this repo) / in-verification (runtime) |
 | Identity & Attestation spec — normalized session token, attestation tiers, honest shared-connector ceiling | published (this repo) |
