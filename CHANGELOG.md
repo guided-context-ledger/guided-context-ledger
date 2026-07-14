@@ -10,6 +10,13 @@ releases.
 
 ### Added
 
+- **Spec — workspace creation documented as a first-class protocol operation.**
+  `spec/Authority-and-Hierarchy.md` gains §8 describing owner-gated workspace
+  creation through the protocol itself: a `genesis → init` ledger boundary plus a
+  hash-chained Root birth record and live registration (no out-of-band
+  provisioning or restart), the creation-vs-selection separation, and the
+  delete/death-certificate boundary.
+
 - **Spec sync — five ratified specifications published to `spec/`.** Synced from
   the private development workspace with a redaction pass (live hosts and ids,
   internal implementation paths, and workspace-internal references removed;
