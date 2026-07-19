@@ -10,6 +10,31 @@ releases.
 
 ### Added
 
+- **Human-readable projections (P0-1) — `@guided-context-ledger/core` 0.1.1.** Every
+  `EventLog.append()` now regenerates a durable, human-readable `_readable/<thread>.md`
+  projection beside the machine event log, plus a `_readable/INDEX.md` front door
+  (per-thread event counts, last activity, latest event). The append-only
+  `events/*.jsonl` log remains the sole source of truth; every projection header
+  says so and points back to it. `renderAllReadable()` backfills existing threads
+  in one pass (the post-deploy migration step). Projection rendering is pure
+  (`renderThreadMarkdown` / `renderIndexMarkdown` / `indexRowFromEvents`, all
+  exported), file writes are atomic (temp + rename), renders are **serialized by a
+  cross-process projection lock** (separate from the event lock, re-reading the log
+  inside it) so a concurrent render can never leave a stale projection behind the
+  log, and a projection failure can never fail a real append. Ported from the
+  private deployment where it ran live for 10 days (deployed 2026-07-08). This
+  closes the gap where the published core claimed inspectability but a human needed
+  an agent to read the coordination layer.
+- **Tolerant-read provenance fields on `AgentEvent`** (`principal`, `mediated_by`,
+  `resolves`) — optional, additive. Hosted/mediated deployments already write
+  these attribution axes into event logs; the core reader now surfaces them (and
+  the projection renders them: `by <principal> · via <mediator>`, `✓ closes:`)
+  instead of dropping them. The local append path does not emit them yet; absent
+  keys parse to `null`/`[]` exactly as before.
+- **New spec: `spec/Readable-Projections.md`** — the human-readable projection
+  requirement as a normative gate (machine truth below, readable projection
+  beside; acceptance criteria included).
+
 - **Spec — workspace creation documented as a first-class protocol operation.**
   `spec/Authority-and-Hierarchy.md` gains §8 describing owner-gated workspace
   creation through the protocol itself: a `genesis → init` ledger boundary plus a

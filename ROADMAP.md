@@ -12,12 +12,14 @@ GCL is developed on a private, live deployment before changes are verified and p
 | Item | Stage |
 | --- | --- |
 | npm publish: `@guided-context-ledger/core` + `connector` | published (this repo) |
+| Human-readable projections — `_readable/*.md` generated beside every event log on append + backfill (P0-1) | published (this repo, core 0.1.1) |
 | `v0.1.0-alpha` tag + GitHub Release | published (this repo) |
 | CI (test + build on PRs) | published (this repo) |
 | Temporal anchoring — server-supplied `server_now`/`clock_source`; ledger time as operand, never the clock | published (spec, this repo) / in-verification (runtime) |
 | Identity & Attestation spec — normalized session token, attestation tiers, honest shared-connector ceiling | published (this repo) |
 | Task lifecycle — pool tasks, claims/leases, terminal states, succession lineage | published (spec, this repo) / in-verification (runtime) |
 | Curated provenance excerpts from GCL's own development ledger | queued (`examples/provenance-excerpts/`) |
+| Current-state / retrieval-at-transitions (P0-2) — orient serves the smallest binding picture (current-state registers, headlines, tier-1 pointer), not historical archaeology | design-ratified; in-verification (live privately) |
 
 ## Mid term
 

@@ -1,6 +1,6 @@
 {
   "name": "@guided-context-ledger/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Transport-agnostic core runtime for the Guided Context Ledger (GCL): workspace I/O, the append-only event/coordination trail (claims, leases, orient/needs_me), and the content-addressed revision ledger (HEAD, CAS).",
   "type": "module",
   "license": "Apache-2.0",

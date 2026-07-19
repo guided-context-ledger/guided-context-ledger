@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { renderThreadMarkdown, renderIndexMarkdown, indexRowFromEvents } from "./readable.js";
 
 /**
  * Event log — the AI-to-AI coordination layer.
@@ -235,6 +236,17 @@ export interface AgentEvent {
   reason: string | null;
   /** For type=task_state: optional refs to the produced result (paths/event ids). [] otherwise. */
   result_refs: string[];
+  /**
+   * Batch-close refs declared by this event ("this write terminally discharges those event ids").
+   * Tolerant-read provenance: hosted/mediated deployments write it; the local append path does not emit
+   * it yet, so it parses to [] on locally-written and legacy events. Optional so existing consumers'
+   * constructed AgentEvent literals stay valid (additive, PATCH-class).
+   */
+  resolves?: string[];
+  /** Attribution axis: the relay/mediator that carried the write (e.g. an OAuth connector). Tolerant-read; null/absent on locally-written and legacy events. */
+  mediated_by?: string | null;
+  /** Attribution axis: the accountable human principal behind the write. Tolerant-read; null/absent on locally-written and legacy events. */
+  principal?: string | null;
 }
 
 /** Optional structured addressing / claim payload for an appended event. */
@@ -514,6 +526,7 @@ export class EventLog {
     }
 
     await this.acquireLock(lock);
+    let out: { seq: number; event_id: string; created_at: string };
     try {
       const record: Record<string, unknown> = {
         actor,
@@ -558,10 +571,20 @@ export class EventLog {
       const seq = await this.countLines(file);
       const event_id = `${thread}#${seq}`;
       await this.touchPresence(actor, created_at); // best-effort
-      return { seq, event_id, created_at };
+      out = { seq, event_id, created_at };
     } finally {
       await this.releaseLock(lock);
     }
+    // Human-readable projection (P0-1, crucible:main#27): regenerate this thread's readable .md + INDEX now
+    // that the event has landed. Done OUTSIDE the write lock and wrapped best-effort — a projection failure
+    // must NEVER fail a real append (same discipline as presence). Awaited (not fire-and-forget) so the .md
+    // is current the moment append returns and short-lived stdio processes don't exit before it flushes.
+    try {
+      await this.renderReadable(thread);
+    } catch {
+      /* projection is a generated view; the event log is the source of truth and already committed above */
+    }
+    return out;
   }
 
   private parseLine(thread: string, line: string, seq: number): AgentEvent | null {
@@ -613,6 +636,11 @@ export class EventLog {
             ? o.reason
             : null,
         result_refs: type === "task_state" ? normalizeActors(o.result_refs) : [],
+        // Batch-close refs; absent on legacy/common-path events -> [].
+        resolves: Array.isArray(o.resolves) ? o.resolves.filter((x: unknown): x is string => typeof x === "string") : [],
+        // Attribution axes — present on connector-relayed writes, null on legacy/direct events.
+        mediated_by: typeof o.mediated_by === "string" && o.mediated_by.trim() ? o.mediated_by : null,
+        principal: typeof o.principal === "string" && o.principal.trim() ? o.principal : null,
       };
     } catch {
       return null;
@@ -706,6 +734,105 @@ export class EventLog {
     } catch {
       return [];
     }
+  }
+
+  // ── Human-readable projection (P0-1, crucible:main#27) ──────────────────────────────────────────
+  // The event log above is the source of truth; these render a durable `.md` view of it into
+  // `<workspace>/_readable/` so a human can inspect the coordination layer directly. Pure formatting
+  // lives in readable.ts; the IO + atomicity + the post-append render hook live here.
+
+  /** Directory holding the generated human-readable projections (sibling to `events/`). */
+  private readableDir(): string {
+    return path.join(this.root, "_readable");
+  }
+
+  /**
+   * Write a projection file atomically (temp + rename) so a concurrent render — two server processes both
+   * re-rendering the same thread after their own appends — never leaves a human reading a half-written file.
+   * rename() is atomic within a filesystem; the projection is regenerated on the next append regardless.
+   */
+  private async atomicWrite(file: string, content: string): Promise<void> {
+    const tmp = `${file}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    await fs.writeFile(tmp, content, "utf8");
+    try {
+      await fs.rename(tmp, file);
+    } catch (e) {
+      await fs.unlink(tmp).catch(() => {});
+      throw e;
+    }
+  }
+
+  /**
+   * Cross-process PROJECTION lock — SEPARATE from the event append lock, so projection never blocks truth.
+   * Atomic temp+rename stops a TORN file, but does NOT serialize concurrent renders: an older renderer could
+   * rename its stale snapshot over a newer one, leaving the projection permanently behind the log ("always
+   * current" violated). Serializing every render transaction (thread + INDEX) + RE-READING the log inside the
+   * lock guarantees the LAST render reflects the newest committed event. mkdir idiom + stale-recovery, same as
+   * the event lock. Best-effort at the call site — a lock timeout never fails an append.
+   */
+  private async withProjectionLock<T>(fn: () => Promise<T>): Promise<T> {
+    const dir = this.readableDir();
+    await fs.mkdir(dir, { recursive: true });
+    const lock = path.join(dir, ".projection.lock");
+    const start = Date.now();
+    for (;;) {
+      try { await fs.mkdir(lock); break; }
+      catch {
+        try { const s = await fs.stat(lock); if (Date.now() - s.mtimeMs > 4_000) { await fs.rmdir(lock).catch(() => {}); continue; } } catch { continue; }
+        if (Date.now() - start > 5_000) throw new Error("projection lock timeout");
+        await new Promise((r) => setTimeout(r, 20));
+      }
+    }
+    try { return await fn(); } finally { await fs.rmdir(lock).catch(() => {}); }
+  }
+
+  /** Render one thread's .md from a FRESH read (no lock — callers hold the projection lock). */
+  private async renderThreadFile(thread: string): Promise<void> {
+    const { events } = await this.readRaw(thread, 0);
+    await this.atomicWrite(path.join(this.readableDir(), `${thread}.md`), renderThreadMarkdown(thread, events));
+  }
+
+  /** Render INDEX.md from every thread's FRESH events (no lock — callers hold the projection lock). */
+  private async renderIndexFile(): Promise<void> {
+    const rows = [];
+    for (const t of await this.listThreads()) {
+      const { events } = await this.readRaw(t, 0);
+      rows.push(indexRowFromEvents(t, events));
+    }
+    await this.atomicWrite(path.join(this.readableDir(), "INDEX.md"), renderIndexMarkdown(path.basename(this.root), rows));
+  }
+
+  /** Regenerate INDEX.md from every thread's current events (cheap: threads are small JSONL files). */
+  async renderIndex(): Promise<void> {
+    await this.withProjectionLock(() => this.renderIndexFile());
+  }
+
+  /**
+   * Regenerate the readable projection for ONE thread + refresh the INDEX. Called best-effort after each
+   * append (see append()); safe to call directly. Never throws for a missing thread — an empty read renders
+   * an empty projection. The whole transaction runs under the projection lock, re-reading the log inside it,
+   * so a concurrent render can never leave a stale thread .md / INDEX.
+   */
+  async renderReadable(thread: string): Promise<void> {
+    await this.withProjectionLock(async () => {
+      await this.renderThreadFile(thread);
+      await this.renderIndexFile();
+    });
+  }
+
+  /**
+   * Backfill: render EVERY thread's projection + the index in one pass. Called at server/process start so
+   * existing threads project to `_readable/*.md` without waiting for a new event on each (the post-deploy
+   * migration step — crucible:main#27's "present in every workspace + any downloaded copy"). Returns how
+   * many threads rendered.
+   */
+  async renderAllReadable(): Promise<{ threads: number }> {
+    return this.withProjectionLock(async () => {
+      const threads = await this.listThreads();
+      for (const t of threads) await this.renderThreadFile(t);
+      await this.renderIndexFile();
+      return { threads: threads.length };
+    });
   }
 
   /**

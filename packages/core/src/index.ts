@@ -42,5 +42,7 @@ export type {
   TaskPoolOptions,
   StalenessAssessment,
 } from "./events.js";
+export { renderThreadMarkdown, renderIndexMarkdown, indexRowFromEvents } from "./readable.js";
+export type { IndexRow } from "./readable.js";
 export { GclLedger, LedgerError, sha256Text, canonicalizePrincipal, versionGte, STAMPED_FROM } from "./ledger.js";
 export type { RevisionArtifact, RevisionEnvelope, RevisionRecord, ActionProvenance, PrincipalSource } from "./ledger.js";
