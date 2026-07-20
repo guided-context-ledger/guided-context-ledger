@@ -22,7 +22,7 @@
     "directory": "packages/connector"
   },
   "dependencies": {
-    "@guided-context-ledger/core": "0.1.0",
+    "@guided-context-ledger/core": "^0.1.0",
     "@modelcontextprotocol/sdk": "^1.12.0",
     "zod": "^3.23.8"
   },

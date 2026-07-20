@@ -74,13 +74,27 @@ At the Task level, before work begins on a qualifying task:
 ## 7. Cross-workspace (v1 scope)
 v1 grants are **workspace-scoped**. **Cross-workspace grants** (a grant in workspace A conferring access in workspace B) are **v2**, riding a cross-workspace resolver + bridge/receipt model (covered in a separate Cross-Workspace spec, not yet published). v1 keeps each workspace's authority self-contained.
 
-## 8. What is in place now vs the parallel track
+## 8. Workspace creation (protocol operation)
+Creating a workspace is a **first-class protocol operation**, not out-of-band provisioning. Any authenticated **owner principal** on a Root can create a new workspace through the protocol itself — no shell access, no server restart, no manual file staging. The operation:
+
+1. is **owner-gated** — it requires an authenticated owner principal stamped from the session boundary; a declared actor or surface alone is never sufficient;
+2. **provisions** the workspace and writes a genesis manifest that inherits the Root environment by reference;
+3. **mints** a canonical workspace id with a `genesis → init` boundary in the new workspace's own ledger, so its origin sits on the tamper-evident trail;
+4. appends a **hash-chained birth record** to the Root's append-only lifecycle log — the immutable "this workspace came into being, minted by X at T" fact, so an origin can never be forged or silently diverge from disk;
+5. **registers the workspace live**, immediately reachable, with no restart.
+
+Creation is **separate from selection** — a newly created workspace does not become the caller's active workspace until it is explicitly entered. Slugs are one safe path segment; reserved and colliding names are refused. The operation is idempotent under a caller-supplied request id.
+
+Deleting a workspace is deliberately **not** a protocol operation: it is irreversible and destroys history, which is antithetical to append-only truth. An out-of-band removal must still leave a `workspace_removed` record in the Root lifecycle log — a death certificate — so the registry never silently diverges from disk.
+
+## 9. What is in place now vs the parallel track
 **In place / canonical now (this spec + the manifest authority block):**
 - The four-level hierarchy and its ownership flow.
 - The permission/grant model (components, four levels, inheritance, rules, the grants ledger lane).
 - Root + Workspace ownership of this workspace, recorded in `workspace.manifest.md`.
 - The Project level formalized (owners + the existing `.gcl/projects/<project>/` lanes).
 - The verified-actor seam and the cross-workspace v1 boundary.
+- **Workspace creation as a first-class protocol operation** (§8) — owner-gated, ledgered with a hash-chained Root birth record, and live (no out-of-band provisioning or restart). Creation is separate from selection.
 
 **Parallel build track (binds in as it lands — NOT claimed complete here):**
 - `spec/Identity-and-Attestation.md` — the verification mechanism behind the seam (§4). Prerequisite for *machine-enforced* grants, human-gated closure, and the human-auth token.
@@ -89,7 +103,7 @@ v1 grants are **workspace-scoped**. **Cross-workspace grants** (a grant in works
 
 This separation is deliberate and is the honest answer to "is it done?": **the structure is done and present; enforcement is the next domino and it is gated on identity.**
 
-## 9. Sequencing for dependent objectives
+## 10. Sequencing for dependent objectives
 1. **This spec + manifest authority block (DONE on landing).**
 2. `spec/Identity-and-Attestation.md` design (parallel, prerequisite for enforcement).
 3. `spec/Task-Lifecycle.md` + the Context-Model spec (depend on this hierarchy as their frame).
