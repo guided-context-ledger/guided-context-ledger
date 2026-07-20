@@ -195,6 +195,11 @@ test("codex public-repo#49: a render that finishes LAST re-reads under the proje
   const md = await readable(`${t}.md`);
   assert.match(md, /older-e1/, "older event present");
   assert.match(md, /NEWEST-e2/, "the last-finishing render re-read the newest event under the lock — no stale overwrite");
+  // INDEX must ALSO reflect the newest event, not just list the thread (codex public-repo#52): the row's
+  // Latest-event column shows NEWEST-e2 and the Events count is 2 — proving no stale INDEX render either.
   const idx = await readable("INDEX.md");
-  assert.match(idx, new RegExp(t));
+  const idxRow = idx.split("\n").find((l) => l.includes(t));
+  assert.ok(idxRow, "INDEX has a row for the thread");
+  assert.match(idxRow!, /NEWEST-e2/, "INDEX Latest-event column reflects the newest event (no stale INDEX render)");
+  assert.match(idxRow!, /\| 2 \|/, "INDEX Events count reflects both appends (2)");
 });
