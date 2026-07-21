@@ -49,11 +49,32 @@ export function hasProvenanceAxes(axes: NoteProvenanceAxes | null | undefined): 
 
 const FENCE_RE = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/;
 
+/**
+ * Emit a value as a YAML scalar that CANNOT break out of its `key: value` position. Axis values are
+ * caller-declared (model/family/surface/…) and MUST NOT be assumed scalar-safe: a newline would inject a
+ * sibling frontmatter key, a `: ` would restructure the mapping, a leading indicator or a bare
+ * `true`/`123` would change the parsed value. A value that is a safe plain scalar is emitted as-is (so
+ * ordinary ids/timestamps stay unquoted); anything else is emitted as a JSON double-quoted scalar (YAML
+ * 1.2 is a JSON superset, so JSON.stringify is a correct — and escaping — double-quoted YAML scalar).
+ */
+function yamlScalar(v: string): string {
+  const plainSafe =
+    v.length > 0 &&
+    !/\p{Cc}/u.test(v) &&                             // no control chars / newlines / tabs
+    !/^[-?:,[\]{}#&*!|>'"%@`\s]/.test(v) &&              // no leading YAML indicator or whitespace
+    !/[:#]$/.test(v) && !/\s$/.test(v) &&                // no trailing : / # / whitespace
+    !/:\s/.test(v) &&                                     // no ": " (mapping ambiguity)
+    !/\s#/.test(v) &&                                     // no " #" (comment start)
+    !/^(?:true|false|null|yes|no|on|off|~)$/i.test(v) && // not a YAML bool/null keyword
+    !/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(v); // not a bare number (avoid type coercion)
+  return plainSafe ? v : JSON.stringify(v);
+}
+
 /** Render the nested `provenance:` block (undefined/empty axes dropped). */
 function renderProvenanceBlock(axes: NoteProvenanceAxes): string {
   const rows: string[] = ["provenance:"];
   const add = (k: string, v?: string | null): void => {
-    if (typeof v === "string" && v.trim() !== "") rows.push(`  ${k}: ${v.trim()}`);
+    if (typeof v === "string" && v.trim() !== "") rows.push(`  ${k}: ${yamlScalar(v.trim())}`);
   };
   add("actor_identity", axes.actor_identity);
   add("principal", axes.principal);

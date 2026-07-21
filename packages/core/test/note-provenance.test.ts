@@ -64,6 +64,50 @@ test("undefined axes are omitted from the block", () => {
   assert.doesNotMatch(out, /stamped_at:/);
 });
 
+// ── R1: caller-declared axes cannot inject/malform the YAML frontmatter ──
+
+test("YAML injection: a newline in an axis value CANNOT inject a sibling frontmatter key", () => {
+  const out = stampNoteProvenance("# B\n", { actor_identity: "evil\ninjected_admin: true", stamped_at: "2026-06-29T03:00:00.000Z" });
+  // the value is emitted as ONE quoted scalar (newline escaped), never as two lines
+  assert.match(out, /actor_identity: "evil\\ninjected_admin: true"/);
+  // no real injected key: the only top-level frontmatter keys are the fence + provenance block
+  assert.doesNotMatch(out, /^injected_admin:/m);
+  // exactly one provenance block, body intact
+  assert.equal((out.match(/provenance:/g) || []).length, 1);
+  assert.match(out, /\n---\n# B\n$/);
+});
+
+test("YAML injection: ': ', '#', leading indicators, and quotes are quoted, not left raw", () => {
+  const cases: Record<string, string> = {
+    colonSpace: "key: value",       // would restructure the mapping
+    hashComment: "val # comment",   // would start a comment
+    leadingDash: "-danger",         // leading YAML indicator
+    leadingQuote: '"quoted',        // leading quote indicator
+    brace: "{a: 1}",                // flow-mapping indicator
+  };
+  for (const v of Object.values(cases)) {
+    const out = stampNoteProvenance("# B\n", { actor_identity: v });
+    // rendered as a JSON double-quoted scalar (safe), so the raw form is never a bare plain scalar
+    assert.match(out, new RegExp(`actor_identity: ${JSON.stringify(v).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    assert.equal((out.match(/provenance:/g) || []).length, 1);
+  }
+});
+
+test("YAML type-coercion: bare booleans/null/numbers are quoted so they stay strings", () => {
+  for (const v of ["true", "false", "null", "yes", "no", "~", "123", "3.14", "-0", "1e5"]) {
+    const out = stampNoteProvenance("# B\n", { model: v });
+    assert.match(out, new RegExp(`model: "${v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`), `"${v}" must be quoted`);
+  }
+});
+
+test("YAML safety regression: ordinary ids / ISO timestamps STAY unquoted (no needless churn)", () => {
+  const out = stampNoteProvenance("# B\n", { actor_identity: "claude-web", mediated_by: "hosted-oauth", mediation_evidence_kind: "static_config", stamped_at: "2026-06-29T03:00:00.000Z" });
+  assert.match(out, /actor_identity: claude-web\n/);
+  assert.match(out, /mediated_by: hosted-oauth\n/);
+  assert.match(out, /mediation_evidence_kind: static_config\n/);
+  assert.match(out, /stamped_at: 2026-06-29T03:00:00\.000Z/); // colons are :digit, a safe plain scalar
+});
+
 // ── Append-only note-write record (authoritative mutation history) ──
 
 let root: string;
