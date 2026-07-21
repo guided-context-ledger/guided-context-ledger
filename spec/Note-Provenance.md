@@ -2,6 +2,8 @@
 
 **Status:** normative. Implemented in `@guided-context-ledger/core` 0.1.1; the note-write analogue of
 the event/ledger action-provenance stamp (see `Ledger-and-CAS.md` and `Identity-and-Attestation.md`).
+The record's machine contract is `spec/schemas/note-write-record.schema.json` — that schema, not this
+prose, is the authority for field names and types.
 
 ## The requirement
 
@@ -18,55 +20,73 @@ The frontmatter snapshot is overwritten in place on each write, so it always sho
 author. The append-only record is what makes "corrections are new records, never edits" hold for notes
 even though the snapshot is destructive.
 
-## Identity axes
+## The note-write record
 
-A mediated note write MAY declare any of these axes; all are OPTIONAL and independent:
+Each record is one JSON object on its own line in `.gcl/note-writes.jsonl`. Its normative shape is
+`spec/schemas/note-write-record.schema.json`. Required fields:
 
-| Axis | Meaning |
-|---|---|
-| `actor_identity` | Executing surface that authored the write (declared, allowlist-validated). |
-| `principal` | Accountable human the session acts for (session-derived). |
-| `mediated_by` | The connector channel that relayed the write (server-stamped). |
-| `mediation_standing` | Honest standing of `mediated_by` — e.g. `declared` for a hosted connector, never `verified`. |
-| `mediation_evidence_kind` | What that standing rests on (e.g. `static_config`). |
-| `model` / `family` / `instance` | Declared provenance/grouping/substrate axes — **never** identity or routing keys. |
-| `stamped_at` | ISO-8601 stamp time. |
+| Field | Type | Meaning |
+|---|---|---|
+| `path` | string | Normalized workspace-relative note path (never absolute; no `.`/`..` segment). |
+| `operation` | `"write"` \| `"append"` | Which note primitive ran. |
+| `written_at` | date-time | ISO-8601 time of the **mutation** (distinct from the frontmatter axis `stamped_at`, which is when the *snapshot* was stamped). |
+| `content_sha256` | hex(64) | sha256 of the mutation payload (see property 5). |
 
-`model`, `family`, and `instance` are **provenance only**. A conforming implementation MUST NOT use
+Optional identity axes (all sparse, all omitted when absent): `actor_identity`, `principal`,
+`mediated_by`, `mediation_standing`, `mediation_evidence_kind`, `model`, `family`, `instance`. New
+records SHOULD carry `schema_version` (`"1.0.0"`); a record with no `schema_version` is read as
+legacy v1.
+
+`model`, `family`, and `instance` are **provenance only** — a conforming implementation MUST NOT use
 them as coordination, authority, or routing keys (see `Identity-and-Attestation.md`).
 
 ## Normative properties
 
 1. **Sparse and back-compatible.** When no axis is supplied — a direct/local write with no mediated
    session — the write MUST be byte-identical to an unstamped write: nothing is stamped into
-   frontmatter and no record is appended. A blank/whitespace-only axis counts as absent.
+   frontmatter and **no record is appended**. A blank/whitespace-only axis counts as absent.
 2. **Legacy is never backfilled.** Pre-existing notes without a `provenance:` block MUST NOT be
    rewritten to add one; provenance attaches only to writes that carry axes.
 3. **Idempotent snapshot.** Stamping MUST replace an existing top-level `provenance:` block rather
    than duplicate it, and MUST preserve all other frontmatter keys and the note body. A note with no
    frontmatter gains a fresh fence carrying only the provenance block.
-4. **Authoritative history.** Each mediated mutation MUST append exactly one record to the workspace's
-   append-only note-write log. Records are ordered oldest-first and accumulate; the log is never
+4. **Authoritative history.** Each mediated mutation MUST append exactly one record to
+   `.gcl/note-writes.jsonl`. Records are ordered oldest-first and accumulate; the log is never
    rewritten. A correction is a new record, never an edit to a prior one.
-5. **Content digest.** Every record MUST carry the `sha256` (hex) of the bytes written — the full
-   content for a `write`, the appended chunk for an `append` — so a reader can verify the recorded
-   mutation against the note's current bytes.
-6. **Standard location.** The append-only note-write log lives under the standard ledger directory
-   (`.gcl/note-writes.jsonl`) as valid JSONL (one record per line, newline-terminated).
-7. **Sparse records.** Any absent axis MUST be omitted from the record entirely (not written as
-   `null`), so a direct-write record carries only path, operation, timestamp, and digest.
+5. **Content digest.** Every record MUST carry `content_sha256` — the sha256 (hex) of the *mutation
+   payload*: the full written content for a `write`, the appended chunk for an `append`. This lets a
+   reader verify the recorded mutation payload when that payload is available. It does **not**, by
+   itself, verify a note's *current* bytes after later writes — an append-chunk digest is not the
+   digest of the whole note, and a `write` digest only matches the current note while it remains the
+   latest write.
+6. **Standard location.** The log lives under the standard ledger directory (`.gcl/note-writes.jsonl`)
+   as valid JSONL: one JSON object per line, newline-terminated, produced by JSON serialization (never
+   string interpolation).
+7. **Sparse records.** Any absent axis MUST be omitted from the record entirely (never written as
+   `null`), so an **axis-sparse mediated record** carries only the four required fields (`path`,
+   `operation`, `written_at`, `content_sha256`) plus whatever axes were supplied.
+8. **Tolerant reads / evolution.** A reader MUST ignore or preserve unknown fields and MUST NOT reject
+   an otherwise-valid record for an additive optional field. An unknown `operation` or an unsupported
+   major `schema_version` MUST be surfaced as uninterpreted — never silently coerced to `write`/`append`.
 
 ## Acceptance test (the gate)
 
-A deployment passes when:
+A conforming deployment passes each numbered case (mapped to the reference conformance suite in
+`packages/core/test/note-provenance.test.ts`):
 
-- a direct/local note write (no axes) produces a note and log byte-identical to an implementation
-  without this mechanism — the mediated path adds cost to nobody else;
-- a mediated write stamps a `provenance:` block into the note's frontmatter and appends one record;
-- re-stamping a note replaces its provenance block (never two) and leaves body + other keys intact;
-- the note-write log round-trips oldest-first, is valid JSONL under `.gcl/`, and each record's
-  `content_sha256` matches the bytes written;
-- absent axes appear nowhere — not in the frontmatter block, not in the record.
+- **A1** — a direct/local note write (no axes) produces a note and log byte-identical to an
+  implementation without this mechanism. *(tests: "no axes → byte-identical"; property 1)*
+- **A2** — a mediated write stamps a `provenance:` block into the note's frontmatter. *(tests: "without
+  frontmatter gets a fresh fence", "with frontmatter keeps its existing keys"; property 3)*
+- **A3** — re-stamping a note replaces its provenance block (never two) and leaves body + other keys
+  intact. *(test: "re-stamping REPLACES the provenance block"; property 3)*
+- **A4** — a mediated mutation appends exactly one record; the log round-trips oldest-first and is
+  valid JSONL under `.gcl/`. *(tests: "append-only round-trip", "log lives under the ledger dir";
+  properties 4, 6)*
+- **A5** — `content_sha256` equals the sha256 of the mutation payload. *(test: "record carries …
+  content digest"; property 5)*
+- **A6** — absent axes appear nowhere — not in the frontmatter block, not in the record. *(tests:
+  "undefined axes are omitted", "sparse axes dropped"; property 7)*
 
 ## Non-goals
 
