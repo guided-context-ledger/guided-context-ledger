@@ -68,6 +68,15 @@ them as coordination, authority, or routing keys (see `Identity-and-Attestation.
 8. **Tolerant reads / evolution.** A reader MUST ignore or preserve unknown fields and MUST NOT reject
    an otherwise-valid record for an additive optional field. An unknown `operation` or an unsupported
    major `schema_version` MUST be surfaced as uninterpreted — never silently coerced to `write`/`append`.
+9. **Mutation/record atomicity (host composition obligation).** A mediated note operation MUST NOT
+   report success unless *both* the note mutation and exactly one corresponding authoritative record are
+   durable. If the record append fails after the mutation, the implementation MUST either safely restore
+   the prior note or enter an explicit, durable recovery/inconsistency state — it MUST NOT leave an
+   apparently-successful but unrecorded mutation. Any such compensation MUST NOT overwrite a concurrent
+   later writer (a CAS / expected-prior-bytes guard, or equivalent). The reference *primitive* is
+   deliberately composable (`stampNoteProvenance` and `appendNoteWriteRecord` are separate calls); this
+   invariant is the composition obligation the host is held to when it wires them together. The specific
+   rollback/compensation strategy is an implementation concern.
 
 ## Acceptance test (the gate)
 
@@ -87,6 +96,12 @@ A conforming deployment passes each numbered case (mapped to the reference confo
   content digest"; property 5)*
 - **A6** — absent axes appear nowhere — not in the frontmatter block, not in the record. *(tests:
   "undefined axes are omitted", "sparse axes dropped"; property 7)*
+- **A7** — an injected record-append failure after a note write (for both `write` and `append`) leaves
+  NO apparently-successful unrecorded mutation: the note is restored, or a durable inconsistency state is
+  entered. *(property 9; host-composition conformance — suite addition pending, not exercised by the
+  primitive-only tests)*
+- **A8** — compensation under a concurrent later write does NOT clobber the newer bytes (CAS /
+  expected-prior-bytes guard). *(property 9; host-composition conformance — suite addition pending)*
 
 ## Non-goals
 
