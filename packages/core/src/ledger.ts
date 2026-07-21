@@ -94,6 +94,14 @@ export function canonicalizePrincipal(id: string): string {
   return id.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+/** The ledger/commit tree — and every append-only side log that conforms to it (note-writes, etc.) —
+ *  lives under `.gcl/` at the workspace root. This is the GCL standard on-disk location; a conforming
+ *  implementation places its ledger there. The `root` parameter is accepted for signature stability so
+ *  a future layout override has a seam, but the standard directory is `.gcl`. */
+export function resolveLedgerDir(_root: string): string {
+  return ".gcl";
+}
+
 export interface RevisionRecord extends RevisionEnvelope {
   revision_id: string;
 }
