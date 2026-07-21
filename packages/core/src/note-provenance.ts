@@ -221,3 +221,100 @@ export async function readNoteWriteRecords(root: string): Promise<NoteWriteRecor
     throw e;
   }
 }
+
+// ── Atomic orchestrator: the note mutation and its authoritative record are all-or-nothing ────────────
+
+/** A minimal note store the atomic orchestrator drives — the host's real note I/O behind three ops. */
+export interface NoteStore {
+  /** Current bytes of the note, or null when it does not exist. */
+  read(notePath: string): Promise<string | null>;
+  /** Replace the note's bytes. */
+  write(notePath: string, content: string): Promise<void>;
+  /** Remove the note (used to compensate a just-CREATED note whose record failed to persist). */
+  remove(notePath: string): Promise<void>;
+}
+
+/** The store + record sink the orchestrator composes. Both are injected so the primitive stays
+ *  strategy-neutral: the standard fixes the compensation INVARIANT, not the storage mechanism. */
+export interface RecordedNoteWriteDeps {
+  store: NoteStore;
+  /** Persist the authoritative record. A throw here triggers CAS-guarded compensation. */
+  appendRecord(record: NoteWriteRecord): Promise<void>;
+}
+
+export interface RecordedNoteWriteInput {
+  notePath: string;
+  operation: NoteWriteOperation;
+  /** "write": the new full note body (pre-stamp). "append": the chunk appended to the existing note. */
+  content: string;
+  written_at: string;
+  axes?: NoteProvenanceAxes | null;
+}
+
+/**
+ * Atomic note-write-with-record — the reference implementation of Note-Provenance property 9. The note
+ * mutation and exactly one authoritative record are all-or-nothing: this NEVER returns success with an
+ * unrecorded mutation. If the record append fails after the note was written, it compensates by rolling
+ * the note back — but ONLY if the note still holds the exact bytes this call wrote (a CAS guard), so a
+ * concurrent LATER writer is never clobbered. If it cannot safely compensate (the note was concurrently
+ * modified, or cannot be re-read), it throws with the durable inconsistency surfaced — never a silent
+ * apparently-successful unrecorded mutation. Store + record sink are injected; the compensation POLICY is
+ * the standard's observable invariant, the storage MECHANISM is the implementation's.
+ */
+export async function runNoteWriteRecorded(
+  deps: RecordedNoteWriteDeps,
+  input: RecordedNoteWriteInput
+): Promise<NoteWriteRecord> {
+  const { store, appendRecord } = deps;
+  const axes = input.axes ?? null;
+  const prior = await store.read(input.notePath);
+
+  let newNote: string;
+  let payload: string; // the bytes content_sha256 digests
+  if (input.operation === "write") {
+    newNote = stampNoteProvenance(input.content, axes ?? {});
+    payload = newNote; // digest the full written content
+  } else {
+    newNote = stampNoteProvenance((prior ?? "") + input.content, axes ?? {});
+    payload = input.content; // digest the appended chunk
+  }
+
+  await store.write(input.notePath, newNote);
+
+  const record = buildNoteWriteRecord({
+    path: input.notePath,
+    operation: input.operation,
+    content: payload,
+    written_at: input.written_at,
+    axes,
+  });
+  try {
+    await appendRecord(record);
+  } catch (appendErr) {
+    let current: string | null;
+    try {
+      current = await store.read(input.notePath);
+    } catch (readErr) {
+      throw new Error(
+        `note-write record append failed and "${input.notePath}" could not be re-read to compensate; ` +
+          `durable inconsistency (unrecorded mutation). append cause: ${String(appendErr)}; read cause: ${String(readErr)}`
+      );
+    }
+    if (current !== newNote) {
+      // A concurrent LATER writer moved the note after our write — do NOT clobber the newer bytes.
+      throw new Error(
+        `note-write record append failed AND "${input.notePath}" was concurrently modified after this write; ` +
+          `refusing to overwrite the newer bytes. Durable inconsistency: the mutation is unrecorded. append cause: ${String(appendErr)}`
+      );
+    }
+    // CAS guard held: the note still holds exactly what we wrote → safe to roll back.
+    if (prior === null) await store.remove(input.notePath);
+    else await store.write(input.notePath, prior);
+    throw new Error(
+      `note-write record append failed; note "${input.notePath}" rolled back to its prior state ` +
+        `(no unrecorded mutation). cause: ${String(appendErr)}`
+    );
+  }
+
+  return record;
+}

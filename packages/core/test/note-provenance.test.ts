@@ -11,8 +11,22 @@ import {
   readNoteWriteRecords,
   noteWritesPath,
   digestContent,
+  runNoteWriteRecorded,
   type NoteProvenanceAxes,
+  type NoteStore,
+  type NoteWriteRecord,
 } from "../src/note-provenance.js";
+
+/** In-memory NoteStore for the atomic-orchestrator tests. */
+function memStore(initial?: Record<string, string>) {
+  const data = new Map<string, string>(Object.entries(initial ?? {}));
+  const store: NoteStore = {
+    async read(p) { return data.has(p) ? data.get(p)! : null; },
+    async write(p, c) { data.set(p, c); },
+    async remove(p) { data.delete(p); },
+  };
+  return { store, data };
+}
 
 const AXES: NoteProvenanceAxes = {
   actor_identity: "claude-web",
@@ -157,4 +171,71 @@ test("the note-write log lives under the ledger dir (.gcl by default)", async ()
   const raw = await fs.readFile(noteWritesPath(root), "utf8");
   assert.equal(raw.endsWith("\n"), true);
   assert.doesNotThrow(() => JSON.parse(raw.trim()));
+});
+
+// ── Atomic orchestrator: mutation + record are all-or-nothing (property 9 / Sol R2) ──
+
+test("atomic: happy path writes the stamped note AND persists exactly one record", async () => {
+  const { store, data } = memStore();
+  const records: NoteWriteRecord[] = [];
+  const rec = await runNoteWriteRecorded(
+    { store, appendRecord: async (r) => { records.push(r); } },
+    { notePath: "n.md", operation: "write", content: "# Title\nbody\n", written_at: AXES.stamped_at!, axes: AXES }
+  );
+  assert.match(data.get("n.md")!, /provenance:\n  actor_identity: claude-web/); // note stamped + written
+  assert.equal(records.length, 1);
+  assert.equal(records[0].content_sha256, rec.content_sha256);
+  assert.equal(rec.operation, "write");
+});
+
+test("atomic: record-append failure on a WRITE rolls the note back to its prior bytes (no unrecorded mutation)", async () => {
+  const { store, data } = memStore({ "n.md": "PRIOR\n" });
+  await assert.rejects(
+    runNoteWriteRecorded(
+      { store, appendRecord: async () => { throw new Error("sink down"); } },
+      { notePath: "n.md", operation: "write", content: "# New\n", written_at: AXES.stamped_at!, axes: AXES }
+    ),
+    /rolled back to its prior state/
+  );
+  assert.equal(data.get("n.md"), "PRIOR\n", "the note is restored; no apparently-successful unrecorded mutation");
+});
+
+test("atomic: record-append failure on a CREATE removes the just-created note", async () => {
+  const { store, data } = memStore(); // note absent
+  await assert.rejects(
+    runNoteWriteRecorded(
+      { store, appendRecord: async () => { throw new Error("sink down"); } },
+      { notePath: "new.md", operation: "write", content: "# Fresh\n", written_at: AXES.stamped_at!, axes: AXES }
+    ),
+    /rolled back/
+  );
+  assert.equal(data.has("new.md"), false, "a created note whose record failed is removed (back to absent)");
+});
+
+test("atomic: record-append failure on an APPEND rolls back to the prior note", async () => {
+  const { store, data } = memStore({ "log.md": "line1\n" });
+  await assert.rejects(
+    runNoteWriteRecorded(
+      { store, appendRecord: async () => { throw new Error("sink down"); } },
+      { notePath: "log.md", operation: "append", content: "line2\n", written_at: AXES.stamped_at!, axes: AXES }
+    ),
+    /rolled back/
+  );
+  assert.equal(data.get("log.md"), "line1\n", "append rolled back to prior");
+});
+
+test("atomic: a concurrent LATER write during compensation is NOT clobbered (CAS guard)", async () => {
+  const { store, data } = memStore({ "n.md": "PRIOR\n" });
+  await assert.rejects(
+    runNoteWriteRecorded(
+      {
+        store,
+        // the record sink fails, and a concurrent writer moves the note before we compensate
+        appendRecord: async () => { data.set("n.md", "CONCURRENT-NEWER\n"); throw new Error("sink down"); },
+      },
+      { notePath: "n.md", operation: "write", content: "# New\n", written_at: AXES.stamped_at!, axes: AXES }
+    ),
+    /concurrently modified/
+  );
+  assert.equal(data.get("n.md"), "CONCURRENT-NEWER\n", "the newer concurrent write survives — compensation never clobbers it");
 });

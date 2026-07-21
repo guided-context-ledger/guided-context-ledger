@@ -54,5 +54,13 @@ export {
   buildNoteWriteRecord,
   appendNoteWriteRecord,
   readNoteWriteRecords,
+  runNoteWriteRecorded,
 } from "./note-provenance.js";
-export type { NoteProvenanceAxes, NoteWriteRecord, NoteWriteOperation } from "./note-provenance.js";
+export type {
+  NoteProvenanceAxes,
+  NoteWriteRecord,
+  NoteWriteOperation,
+  NoteStore,
+  RecordedNoteWriteDeps,
+  RecordedNoteWriteInput,
+} from "./note-provenance.js";
