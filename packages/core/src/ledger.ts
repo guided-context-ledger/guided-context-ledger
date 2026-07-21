@@ -24,7 +24,7 @@ export interface RevisionArtifact {
  *  no provenance block — see revisionId(). Kept in sync with readback's PROVENANCE_STAMPED_FROM. */
 export const STAMPED_FROM = "0.2.0";
 
-export type PrincipalSource = "self_report" | "connector_session" | "org_verified";
+export type PrincipalSource = "self_report" | "operator_local" | "connector_session" | "org_verified";
 
 /** Action-provenance envelope (schema 0.2.0+). Stamped DECLARATIONS of who acted, for whom, under
  *  what authority, and where the content came from. Every field here is IN the revision_id hash

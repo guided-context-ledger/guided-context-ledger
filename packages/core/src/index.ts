@@ -106,3 +106,10 @@ export type {
   ContactDecision,
   PromotionResult,
 } from "./identity-binding.js";
+export {
+  advanceIdentityAnchor,
+  readIdentityAnchor,
+  validateIdentityLog,
+  verifyAnchoredLane,
+} from "./identity-anchor.js";
+export type { IdentityHead, AnchoredHead, RecoveryContext, AnchorVerification } from "./identity-anchor.js";
