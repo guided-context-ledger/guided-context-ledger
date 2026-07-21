@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://guided-context-ledger.org/schema/note-write-record/1.0.0",
+  "title": "GCL NoteWriteRecord",
+  "description": "One append-only record per mediated note mutation, stored as a line in .gcl/note-writes.jsonl. Authoritative for note mutation history (see spec/Note-Provenance.md). This schema is the field-name/type authority the spec prose defers to.",
+  "type": "object",
+  "required": ["path", "operation", "written_at", "content_sha256"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0.0",
+      "description": "Present on newly emitted v1 records; absence is read as a legacy-v1 record (deployed history predates the discriminator)."
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Normalized workspace-relative note path; never absolute/drive/UNC, and never containing a NUL or a '.'/'..' traversal segment. The writer normalizes and containment-checks before recording."
+    },
+    "operation": {
+      "type": "string",
+      "enum": ["write", "append"],
+      "description": "Which note primitive ran. An unknown value MUST be surfaced as uninterpreted, never coerced."
+    },
+    "written_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 time of the mutation. Distinct from the frontmatter provenance axis 'stamped_at' (when the snapshot was stamped)."
+    },
+    "content_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "sha256 (hex) of the mutation payload: complete written content for 'write'; appended chunk for 'append'."
+    },
+    "actor_identity": { "type": "string", "minLength": 1, "description": "Executing surface (declared, allowlist-validated)." },
+    "principal": { "type": "string", "minLength": 1, "description": "Accountable human the session acts for (session-derived)." },
+    "mediated_by": { "type": "string", "minLength": 1, "description": "Relaying connector channel (server-stamped)." },
+    "mediation_standing": { "type": "string", "minLength": 1, "description": "Honest standing of mediated_by (e.g. 'declared'), never 'verified' for a hosted connector." },
+    "mediation_evidence_kind": { "type": "string", "minLength": 1, "description": "What that standing rests on (e.g. 'static_config')." },
+    "model": { "type": "string", "minLength": 1, "description": "Declared model/mind — provenance only, never a key." },
+    "family": { "type": "string", "minLength": 1, "description": "Declared model family/grouping — display only, never a key." },
+    "instance": { "type": "string", "minLength": 1, "description": "Per-seat substrate-isolation handle — audit only, never a coordination id." }
+  },
+  "additionalProperties": true
+}
