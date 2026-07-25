@@ -68,17 +68,30 @@ them as coordination, authority, or routing keys (see `Identity-and-Attestation.
 8. **Tolerant reads / evolution.** A reader MUST ignore or preserve unknown fields and MUST NOT reject
    an otherwise-valid record for an additive optional field. An unknown `operation` or an unsupported
    major `schema_version` MUST be surfaced as uninterpreted — never silently coerced to `write`/`append`.
-9. **Mutation/record atomicity (host composition obligation).** A mediated note operation MUST NOT
-   report success unless *both* the note mutation and exactly one corresponding authoritative record are
-   durable. If the record append fails after the mutation, the implementation MUST either safely restore
-   the prior note or enter an explicit, durable recovery/inconsistency state — it MUST NOT leave an
-   apparently-successful but unrecorded mutation. Any such compensation MUST NOT overwrite a concurrent
-   later writer (a CAS / expected-prior-bytes guard, or equivalent). The reference *primitive* is
-   deliberately composable (`stampNoteProvenance` and `appendNoteWriteRecord` are separate calls); this
-   invariant is the composition obligation the host is held to when it wires them together. The reference
-   implementation provides `runNoteWriteRecorded` — a strategy-neutral orchestrator over an injected note
-   store + record sink that enforces the invariant with CAS-guarded compensation. The specific
-   rollback/compensation strategy is an implementation concern.
+9. **Mutation/record atomicity + exactly-once (host composition obligation).** A mediated note operation
+   MUST NOT report success unless *both* the note mutation and exactly one corresponding authoritative
+   record are durable. Three sub-obligations make this real rather than best-effort:
+   - **Atomic mutation (no unobserved clobber).** Every note mutation — the initial write AND any
+     compensating write/remove — MUST be an atomic compare-and-set: it applies only if the note still
+     holds the exact bytes the operation observed (the prior bytes for the initial write; the just-written
+     bytes for compensation). A plain read-then-write does NOT satisfy this: a writer landing in that
+     window would be clobbered. A CAS failure means a concurrent writer intervened; the operation MUST
+     fail-closed and surface the (unrecorded) inconsistency rather than overwrite newer bytes.
+   - **Exactly-once via idempotency key.** The record append MUST be idempotent, keyed by a stable
+     `operation_id` carried on the record, so a retry of the same logical mutation can never produce a
+     duplicate or a second mutation.
+   - **Ambiguous-append recovery.** If the record append fails ambiguously (it may have durably landed
+     before throwing), the implementation MUST read back by `operation_id` before compensating: if the
+     record is present, the note+record pair is consistent and MUST be kept (rolling back would violate
+     exactly-once); only if the record is genuinely absent may the note be atomically rolled back. It MUST
+     NOT leave an apparently-successful but unrecorded mutation, nor a note rolled back beneath a durable
+     record.
+   The reference *primitives* stay composable (`stampNoteProvenance` and `appendNoteWriteRecord` are
+   separate calls); this invariant is the composition obligation the host is held to when it wires them
+   together. The reference implementation provides `runNoteWriteRecorded` — a strategy-neutral orchestrator
+   over an injected note store (atomic `writeIfCurrent` / `removeIfCurrent`) plus an idempotent record sink
+   (`appendRecordIdempotent` / `hasRecord`). The storage MECHANISM behind the CAS (O_EXCL create, per-note
+   lock, temp-file rename, …) is an implementation concern; the CAS + exactly-once INVARIANT is not.
 
 ## Acceptance test (the gate)
 
@@ -99,12 +112,22 @@ A conforming deployment passes each numbered case (mapped to the reference confo
 - **A6** — absent axes appear nowhere — not in the frontmatter block, not in the record. *(tests:
   "undefined axes are omitted", "sparse axes dropped"; property 7)*
 - **A7** — an injected record-append failure after a note write (for `write`, `append`, and create)
-  leaves NO apparently-successful unrecorded mutation: the note is rolled back to its prior state (or
-  removed, if it was just created). *(tests: "atomic: record-append failure on a WRITE/CREATE/APPEND
-  rolls … back"; property 9)*
-- **A8** — compensation under a concurrent later write does NOT clobber the newer bytes (CAS /
-  expected-prior-bytes guard); the durable inconsistency is surfaced instead. *(test: "atomic: a
-  concurrent LATER write during compensation is NOT clobbered"; property 9)*
+  leaves NO apparently-successful unrecorded mutation: the note is atomically rolled back to its prior
+  state (or removed, if it was just created). *(tests: "atomic: record-append failure on a
+  WRITE/CREATE/APPEND rolls … back"; property 9)*
+- **A8** — a concurrent LATER writer that moves the note *after* our write but *before* compensation is
+  NOT clobbered: the atomic `removeIfCurrent`/`writeIfCurrent` refuses and the durable inconsistency is
+  surfaced instead. *(test: "atomic: concurrent LATER write during compensation ⇒ atomic CAS refuses
+  rollback, newer bytes survive (blocker 1)"; property 9)*
+- **A9** — a concurrent writer landing *between* the initial read and the initial write is NOT clobbered:
+  `writeIfCurrent` refuses, nothing is recorded, and the fail-closed refusal is surfaced. *(test: "atomic:
+  concurrent writer between read and initial write ⇒ writeIfCurrent refuses, no clobber (blocker 2)";
+  property 9)*
+- **A10** — exactly-once: (a) an append that durably lands then throws is resolved by `operation_id`
+  readback — the note is KEPT and exactly one record remains; (b) retrying the same `operation_id` adds no
+  duplicate record and does not re-mutate. *(tests: "atomic: append durably lands then throws ⇒ readback
+  keeps the note, exactly one record (blocker 3)", "atomic: retrying the same operation_id is idempotent";
+  property 9)*
 
 ## Non-goals
 

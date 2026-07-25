@@ -17,15 +17,31 @@ import {
   type NoteWriteRecord,
 } from "../src/note-provenance.js";
 
-/** In-memory NoteStore for the atomic-orchestrator tests. */
+/** In-memory NoteStore for the atomic-orchestrator tests. writeIfCurrent/removeIfCurrent are atomic here by
+ *  virtue of the single-threaded event loop: the compare and the mutation run without an await between them. */
 function memStore(initial?: Record<string, string>) {
   const data = new Map<string, string>(Object.entries(initial ?? {}));
+  const cur = (p: string) => (data.has(p) ? data.get(p)! : null);
   const store: NoteStore = {
-    async read(p) { return data.has(p) ? data.get(p)! : null; },
-    async write(p, c) { data.set(p, c); },
-    async remove(p) { data.delete(p); },
+    async read(p) { return cur(p); },
+    async writeIfCurrent(p, expected, next) { if (cur(p) !== expected) return false; data.set(p, next); return true; },
+    async removeIfCurrent(p, expected) { if (cur(p) !== expected) return false; data.delete(p); return true; },
   };
   return { store, data };
+}
+
+/** In-memory idempotent record sink keyed by operation_id, with a readback probe. */
+function recordSink() {
+  const records: NoteWriteRecord[] = [];
+  const deps = {
+    async appendRecordIdempotent(rec: NoteWriteRecord) {
+      if (records.some((r) => r.operation_id === rec.operation_id)) return false;
+      records.push(rec);
+      return true;
+    },
+    async hasRecord(operation_id: string) { return records.some((r) => r.operation_id === operation_id); },
+  };
+  return { records, deps };
 }
 
 const AXES: NoteProvenanceAxes = {
@@ -173,27 +189,29 @@ test("the note-write log lives under the ledger dir (.gcl by default)", async ()
   assert.doesNotThrow(() => JSON.parse(raw.trim()));
 });
 
-// ── Atomic orchestrator: mutation + record are all-or-nothing (property 9 / Sol R2) ──
+// ── Atomic orchestrator: mutation + record are all-or-nothing AND exactly-once (property 9 / Sol R2, codex#110) ──
 
 test("atomic: happy path writes the stamped note AND persists exactly one record", async () => {
   const { store, data } = memStore();
-  const records: NoteWriteRecord[] = [];
+  const { records, deps } = recordSink();
   const rec = await runNoteWriteRecorded(
-    { store, appendRecord: async (r) => { records.push(r); } },
-    { notePath: "n.md", operation: "write", content: "# Title\nbody\n", written_at: AXES.stamped_at!, axes: AXES }
+    { store, ...deps },
+    { notePath: "n.md", operation: "write", content: "# Title\nbody\n", written_at: AXES.stamped_at!, operation_id: "op-happy", axes: AXES }
   );
   assert.match(data.get("n.md")!, /provenance:\n  actor_identity: claude-web/); // note stamped + written
   assert.equal(records.length, 1);
   assert.equal(records[0].content_sha256, rec.content_sha256);
+  assert.equal(records[0].operation_id, "op-happy");
   assert.equal(rec.operation, "write");
 });
 
 test("atomic: record-append failure on a WRITE rolls the note back to its prior bytes (no unrecorded mutation)", async () => {
   const { store, data } = memStore({ "n.md": "PRIOR\n" });
+  const { deps } = recordSink();
   await assert.rejects(
     runNoteWriteRecorded(
-      { store, appendRecord: async () => { throw new Error("sink down"); } },
-      { notePath: "n.md", operation: "write", content: "# New\n", written_at: AXES.stamped_at!, axes: AXES }
+      { store, ...deps, appendRecordIdempotent: async () => { throw new Error("sink down"); } },
+      { notePath: "n.md", operation: "write", content: "# New\n", written_at: AXES.stamped_at!, operation_id: "op-w", axes: AXES }
     ),
     /rolled back to its prior state/
   );
@@ -202,10 +220,11 @@ test("atomic: record-append failure on a WRITE rolls the note back to its prior 
 
 test("atomic: record-append failure on a CREATE removes the just-created note", async () => {
   const { store, data } = memStore(); // note absent
+  const { deps } = recordSink();
   await assert.rejects(
     runNoteWriteRecorded(
-      { store, appendRecord: async () => { throw new Error("sink down"); } },
-      { notePath: "new.md", operation: "write", content: "# Fresh\n", written_at: AXES.stamped_at!, axes: AXES }
+      { store, ...deps, appendRecordIdempotent: async () => { throw new Error("sink down"); } },
+      { notePath: "new.md", operation: "write", content: "# Fresh\n", written_at: AXES.stamped_at!, operation_id: "op-c", axes: AXES }
     ),
     /rolled back/
   );
@@ -214,28 +233,93 @@ test("atomic: record-append failure on a CREATE removes the just-created note", 
 
 test("atomic: record-append failure on an APPEND rolls back to the prior note", async () => {
   const { store, data } = memStore({ "log.md": "line1\n" });
+  const { deps } = recordSink();
   await assert.rejects(
     runNoteWriteRecorded(
-      { store, appendRecord: async () => { throw new Error("sink down"); } },
-      { notePath: "log.md", operation: "append", content: "line2\n", written_at: AXES.stamped_at!, axes: AXES }
+      { store, ...deps, appendRecordIdempotent: async () => { throw new Error("sink down"); } },
+      { notePath: "log.md", operation: "append", content: "line2\n", written_at: AXES.stamped_at!, operation_id: "op-a", axes: AXES }
     ),
     /rolled back/
   );
   assert.equal(data.get("log.md"), "line1\n", "append rolled back to prior");
 });
 
-test("atomic: a concurrent LATER write during compensation is NOT clobbered (CAS guard)", async () => {
+// codex#110 blocker 1 — the TOCTOU the old in-memory "CAS guard" test could NOT exercise: a concurrent LATER
+// writer moves the note AFTER our write, BEFORE compensation. Atomic removeIfCurrent/writeIfCurrent must refuse.
+test("atomic: concurrent LATER write during compensation ⇒ atomic CAS refuses rollback, newer bytes survive (blocker 1)", async () => {
   const { store, data } = memStore({ "n.md": "PRIOR\n" });
+  const { deps } = recordSink();
   await assert.rejects(
     runNoteWriteRecorded(
       {
         store,
-        // the record sink fails, and a concurrent writer moves the note before we compensate
-        appendRecord: async () => { data.set("n.md", "CONCURRENT-NEWER\n"); throw new Error("sink down"); },
+        ...deps,
+        // the sink fails, and a concurrent writer moves the note before we compensate (does NOT record):
+        appendRecordIdempotent: async () => { data.set("n.md", "CONCURRENT-LATER\n"); throw new Error("sink down"); },
       },
-      { notePath: "n.md", operation: "write", content: "# New\n", written_at: AXES.stamped_at!, axes: AXES }
+      { notePath: "n.md", operation: "write", content: "# New\n", written_at: AXES.stamped_at!, operation_id: "op-late", axes: AXES }
     ),
-    /concurrently modified/
+    /concurrently modified after our write/
   );
-  assert.equal(data.get("n.md"), "CONCURRENT-NEWER\n", "the newer concurrent write survives — compensation never clobbers it");
+  assert.equal(data.get("n.md"), "CONCURRENT-LATER\n", "atomic CAS rollback refused to clobber the newer write");
+});
+
+// codex#110 blocker 2 — a concurrent writer lands BETWEEN our read and our initial write. writeIfCurrent must
+// refuse; the initial mutation is never an unconditional clobber.
+test("atomic: concurrent writer between read and initial write ⇒ writeIfCurrent refuses, no clobber (blocker 2)", async () => {
+  const data = new Map<string, string>([["n.md", "PRIOR\n"]]);
+  const cur = (p: string) => (data.has(p) ? data.get(p)! : null);
+  const racingStore: NoteStore = {
+    async read(p) {
+      const v = cur(p);
+      if (v === "PRIOR\n") data.set(p, "CONCURRENT-A\n"); // a writer lands right after our read (TOCTOU window)
+      return v;
+    },
+    async writeIfCurrent(p, expected, next) { if (cur(p) !== expected) return false; data.set(p, next); return true; },
+    async removeIfCurrent(p, expected) { if (cur(p) !== expected) return false; data.delete(p); return true; },
+  };
+  const { records, deps } = recordSink();
+  await assert.rejects(
+    runNoteWriteRecorded(
+      { store: racingStore, ...deps },
+      { notePath: "n.md", operation: "write", content: "# New\n", written_at: AXES.stamped_at!, operation_id: "op-race", axes: AXES }
+    ),
+    /concurrently modified between read and write/
+  );
+  assert.equal(data.get("n.md"), "CONCURRENT-A\n", "the concurrent writer's bytes survive; our write never clobbered them");
+  assert.equal(records.length, 0, "nothing recorded for a refused mutation");
+});
+
+// codex#110 blocker 3 — the append DURABLY lands then the sink throws (ambiguous outcome). Readback by
+// operation_id must keep the note (rolling back would violate all-or-nothing) and leave exactly one record.
+test("atomic: append durably lands then throws ⇒ readback keeps the note, exactly one record (blocker 3)", async () => {
+  const { store, data } = memStore({ "n.md": "PRIOR\n" });
+  const records: NoteWriteRecord[] = [];
+  const deps = {
+    async appendRecordIdempotent(rec: NoteWriteRecord) {
+      if (records.some((r) => r.operation_id === rec.operation_id)) return false;
+      records.push(rec);                 // the record durably lands...
+      throw new Error("ack timeout");    // ...then the sink throws — outcome is ambiguous to the caller
+    },
+    async hasRecord(operation_id: string) { return records.some((r) => r.operation_id === operation_id); },
+  };
+  const rec = await runNoteWriteRecorded(
+    { store, ...deps },
+    { notePath: "n.md", operation: "write", content: "# New\n", written_at: AXES.stamped_at!, operation_id: "op-ambig", axes: AXES }
+  );
+  assert.match(data.get("n.md")!, /provenance:/, "the note mutation is KEPT — the record is durable, so a rollback would break all-or-nothing");
+  assert.equal(records.length, 1, "exactly one record; no rollback despite the append throwing");
+  assert.equal(rec.operation_id, "op-ambig");
+});
+
+// exactly-once under retry: replaying the SAME operation_id adds no duplicate record and does not re-mutate.
+test("atomic: retrying the same operation_id is idempotent ⇒ no duplicate record, note unchanged (exactly-once)", async () => {
+  const { store, data } = memStore({ "n.md": "PRIOR\n" });
+  const { records, deps } = recordSink();
+  const input = { notePath: "n.md", operation: "write" as const, content: "# New\n", written_at: AXES.stamped_at!, operation_id: "op-retry", axes: AXES };
+  await runNoteWriteRecorded({ store, ...deps }, input);
+  const afterFirst = data.get("n.md");
+  await runNoteWriteRecorded({ store, ...deps }, input); // retry with the same operation_id
+  assert.equal(records.length, 1, "the retry adds no second record");
+  assert.equal(data.get("n.md"), afterFirst, "the note is unchanged by the idempotent retry");
 });
