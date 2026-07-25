@@ -62,7 +62,7 @@ Common rule across all three: **the verifier is never the executor.**
 - **Delegation composes with the hierarchy — not a special case.** An owner designating someone as approver is an **Approve grant** (`spec/Authority-and-Hierarchy.md`) scoped to that task/project. The designee's human-auth token then satisfies the gate within that scope; revoking is a ledger event. The closure verifier is valid only if the session principal holds the required grant **at verification time**.
 
 ## 6. Schema mapping (schema-ratified)
-Integration with the existing task model (`@gcl/core` events: `task` aggregate / `claim` ownership / `task_authorization` = claim-eligibility / `task_state` = terminal truth / `task_condition` = pending/blocked):
+Integration with the existing task model (`@guided-context-ledger/core` events: `task` aggregate / `claim` ownership / `task_authorization` = claim-eligibility / `task_state` = terminal truth / `task_condition` = pending/blocked):
 
 1. **Creation-time fields on the `task` event** (set by the authorized human/principal):
    - `closure_type`: `auto_closeable | peer_reviewed | human_gated`

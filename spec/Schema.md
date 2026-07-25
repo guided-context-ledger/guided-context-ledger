@@ -221,7 +221,7 @@ These additions close a schema gap identified during review without changing the
 
 ## Provenance: `principal_source` (how the principal was known)
 
-The action-provenance envelope (schema ≥ 0.2.0, defined in `@gcl/core`) carries `principal_source` alongside `principal_id` and `actor_identity`. It records HOW the accountable principal behind a write was established — a distinct axis from `attestation_tier` in `spec/Identity-and-Attestation.md` (which grades identity *strength* of a session token). Allowed values, weakest → strongest by the trust the runtime can place in the claim:
+The action-provenance envelope (schema ≥ 0.2.0, defined in `@guided-context-ledger/core`) carries `principal_source` alongside `principal_id` and `actor_identity`. It records HOW the accountable principal behind a write was established — a distinct axis from `attestation_tier` in `spec/Identity-and-Attestation.md` (which grades identity *strength* of a session token). Allowed values, weakest → strongest by the trust the runtime can place in the claim:
 
 - `self_report` — an agent's bare declaration (weakest; the default when nothing stronger is available).
 - `operator_local` — a direct **host-operator** action: someone with shell access on the host ran it (e.g. a batch host-operator genesis-mint script). Not a connector-mediated agent claim; host-access-gated, so it ranks above a bare self-report.
