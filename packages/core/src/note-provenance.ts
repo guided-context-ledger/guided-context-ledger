@@ -258,11 +258,16 @@ export interface RecordedNoteWriteDeps {
    * Durably append the authoritative record IFF no record with the same `operation_id` already exists
    * (idempotent). Returns true iff THIS call added it; false iff one was already present. The check-and-append
    * MUST be atomic so a retry can never duplicate the record. A throw is treated as an AMBIGUOUS outcome and
-   * resolved by `hasRecord`.
+   * resolved by `getRecord`.
    */
   appendRecordIdempotent(record: NoteWriteRecord): Promise<boolean>;
-  /** Readback used to resolve an ambiguous append: does a record with this `operation_id` exist? */
-  hasRecord(operation_id: string): Promise<boolean>;
+  /**
+   * Canonical retrieval by `operation_id` — the durable record, or null. Returning the RECORD (not just a
+   * boolean) lets the orchestrator verify a pre-existing record is for the SAME (path, operation, content):
+   * a reused operation_id bound to a different write is a collision that must fail closed, never a silent
+   * overwrite. (equivalent-fingerprint retrieval is acceptable in place of the whole record.)
+   */
+  getRecord(operation_id: string): Promise<NoteWriteRecord | null>;
 }
 
 export interface RecordedNoteWriteInput {
@@ -276,6 +281,31 @@ export interface RecordedNoteWriteInput {
   axes?: NoteProvenanceAxes | null;
 }
 
+/** Two records are the SAME logical write iff they target the same path with the same operation and content.
+ *  `operation_id` is an idempotency key, not a free-form tag: reusing it for a different (path|operation|content)
+ *  is a COLLISION that must fail closed — never a silent case where one write's mutation stands under another
+ *  write's record, or a retry with a different payload returns a freshly-built non-durable record (codex R3). */
+function sameLogicalWrite(a: NoteWriteRecord, b: NoteWriteRecord): boolean {
+  return a.path === b.path && a.operation === b.operation && a.content_sha256 === b.content_sha256;
+}
+function collisionMsg(operation_id: string, existing: NoteWriteRecord, mine: NoteWriteRecord): string {
+  return `operation_id "${operation_id}" is already bound to a different write ` +
+    `(${existing.path}/${existing.operation}/${existing.content_sha256}); refusing to reuse it for ` +
+    `${mine.path}/${mine.operation}/${mine.content_sha256} — collision, fail closed`;
+}
+/** Roll back THIS invocation's mutation ATOMICALLY (only if the note still holds exactly our bytes) and throw.
+ *  Used whenever our mutation cannot be tied to a durable record OF OUR OWN write (append failed, or a different
+ *  write holds the operation_id) — so a losing writer never returns success with an unrecorded mutation. */
+async function failClosedRollback(
+  store: NoteStore, notePath: string, prior: string | null, newNote: string, operation_id: string, reason: string
+): Promise<never> {
+  const rolledBack = prior === null ? await store.removeIfCurrent(notePath, newNote) : await store.writeIfCurrent(notePath, newNote, prior);
+  if (!rolledBack) {
+    throw new Error(`${reason}; AND "${notePath}" was concurrently modified after our write, so this mutation is unrecorded and could not be rolled back without clobbering newer bytes. operation_id=${operation_id}`);
+  }
+  throw new Error(`${reason}; note "${notePath}" atomically rolled back to its prior state (no unrecorded mutation). operation_id=${operation_id}`);
+}
+
 /**
  * Atomic note-write-with-record — the reference implementation of Note-Provenance property 9. The note
  * mutation and exactly one authoritative record are all-or-nothing AND exactly-once: this NEVER returns
@@ -287,10 +317,11 @@ export interface RecordedNoteWriteInput {
  * (`newNote`). A concurrent writer that lands inside either window makes the relevant CAS FAIL, so the
  * orchestrator throws and surfaces the (unrecorded) inconsistency rather than overwriting newer bytes.
  *
- * The record append is idempotent, keyed by `operation_id`. If the append throws (an ambiguous outcome — it
- * may have durably landed before failing), the orchestrator reads back by `operation_id`: if the record is
- * there, the note+record pair is consistent and is kept (rolling back would violate exactly-once); if it is
- * genuinely absent, the note is atomically rolled back. Retrying with the same `operation_id` is a no-op.
+ * The record append is idempotent, keyed by `operation_id` — but an operation_id is bound to ONE canonical
+ * (path, operation, content). On every pre-existing / already-present / ambiguous-append outcome the
+ * orchestrator retrieves the durable record and verifies it is THIS write: a match is a true idempotent replay
+ * (the durable record is returned, note untouched); a MISMATCH is an operation_id collision that fails closed,
+ * atomically rolling back this call's mutation so the loser never leaves an unrecorded write.
  */
 export async function runNoteWriteRecorded(
   deps: RecordedNoteWriteDeps,
@@ -321,18 +352,23 @@ export async function runNoteWriteRecorded(
     axes,
   });
 
-  // Idempotent short-circuit: if this operation was already recorded, the logical mutation is durably done.
-  // Re-applying it could clobber a later writer, so return the record without touching the note.
-  if (await deps.hasRecord(operation_id)) return record;
+  // Idempotent short-circuit WITH collision detection: a pre-existing record for this operation_id must be for
+  // the SAME logical write. Match ⇒ true replay, return the durable record, touch nothing. Mismatch ⇒ collision,
+  // fail closed BEFORE any mutation (nothing to roll back yet).
+  const pre = await deps.getRecord(operation_id);
+  if (pre) {
+    if (!sameLogicalWrite(pre, record)) throw new Error(collisionMsg(operation_id, pre, record) + " (before any mutation)");
+    return pre;
+  }
 
   // 1) ATOMIC initial mutation — apply newNote only if the note still holds `prior`. A concurrent writer
   //    between our read and this write makes the CAS fail; we never overwrite bytes we did not observe.
   const applied = await store.writeIfCurrent(notePath, prior, newNote);
   if (!applied) {
-    // Distinguish an idempotent replay (a prior run of THIS op already landed newNote + its record) from a
-    // genuinely concurrent writer. The former is success; the latter is a fail-closed refusal.
     const current = await store.read(notePath);
-    if (current === newNote && (await deps.hasRecord(operation_id))) return record;
+    const now = await deps.getRecord(operation_id);
+    if (current === newNote && now && sameLogicalWrite(now, record)) return now; // idempotent replay already landed
+    if (now && !sameLogicalWrite(now, record)) throw new Error(collisionMsg(operation_id, now, record) + " (detected at the initial write; nothing mutated)");
     throw new Error(
       `note-write "${notePath}" was concurrently modified between read and write; refusing to clobber ` +
         `(no unrecorded mutation). operation_id=${operation_id}`
@@ -344,36 +380,29 @@ export async function runNoteWriteRecorded(
   try {
     appended = await deps.appendRecordIdempotent(record);
   } catch (appendErr) {
-    // AMBIGUOUS: the append may have durably landed before throwing. Read back before compensating — a
-    // rollback while the record exists would violate BOTH all-or-nothing and exactly-once.
-    let landed: boolean;
+    // AMBIGUOUS: the append may have durably landed before throwing. Read back the CANONICAL record.
+    let landed: NoteWriteRecord | null;
     try {
-      landed = await deps.hasRecord(operation_id);
+      landed = await deps.getRecord(operation_id);
     } catch (readErr) {
       throw new Error(
         `note-write record append outcome is UNKNOWN for "${notePath}" and readback failed; possible durable ` +
           `inconsistency. operation_id=${operation_id}. append cause: ${String(appendErr)}; readback cause: ${String(readErr)}`
       );
     }
-    if (landed) return record; // the record IS durable → the pair is consistent → keep it (exactly-once holds).
-    // The record is genuinely absent → compensate ATOMICALLY, only if the note still holds exactly our bytes.
-    const rolledBack =
-      prior === null ? await store.removeIfCurrent(notePath, newNote) : await store.writeIfCurrent(notePath, newNote, prior);
-    if (!rolledBack) {
-      // A concurrent LATER writer moved the note after our write — the CAS refused. Never clobber newer bytes.
-      throw new Error(
-        `note-write record append failed AND "${notePath}" was concurrently modified after our write; refusing ` +
-          `to overwrite the newer bytes (mutation is unrecorded). operation_id=${operation_id}. cause: ${String(appendErr)}`
-      );
-    }
-    throw new Error(
-      `note-write record append failed; note "${notePath}" atomically rolled back to its prior state ` +
-        `(no unrecorded mutation). operation_id=${operation_id}. cause: ${String(appendErr)}`
-    );
+    if (landed && sameLogicalWrite(landed, record)) return landed; // OUR write is durable → keep the note (exactly-once holds).
+    // Either no record, or a DIFFERENT write holds this operation_id → our mutation must not stand unrecorded.
+    return failClosedRollback(store, notePath, prior, newNote, operation_id,
+      landed ? collisionMsg(operation_id, landed, record) : `note-write record append failed (cause: ${String(appendErr)})`);
   }
-  // appended === false means the record was already present under this operation_id (idempotent replay); the
-  // note now holds newNote and the record exists, so the pair is consistent either way.
-  void appended;
+  if (!appended) {
+    // The record was already present under this operation_id — verify it is OUR logical write, not a collision.
+    const other = await deps.getRecord(operation_id);
+    if (other && !sameLogicalWrite(other, record)) {
+      return failClosedRollback(store, notePath, prior, newNote, operation_id, collisionMsg(operation_id, other, record));
+    }
+    return other ?? record; // same logical write already durable → consistent.
+  }
 
   return record;
 }
