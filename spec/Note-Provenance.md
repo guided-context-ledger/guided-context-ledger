@@ -77,9 +77,15 @@ them as coordination, authority, or routing keys (see `Identity-and-Attestation.
      bytes for compensation). A plain read-then-write does NOT satisfy this: a writer landing in that
      window would be clobbered. A CAS failure means a concurrent writer intervened; the operation MUST
      fail-closed and surface the (unrecorded) inconsistency rather than overwrite newer bytes.
-   - **Exactly-once via idempotency key.** The record append MUST be idempotent, keyed by a stable
-     `operation_id` carried on the record, so a retry of the same logical mutation can never produce a
-     duplicate or a second mutation.
+   - **Exactly-once via idempotency key, bound to one canonical write.** The record append MUST be
+     idempotent, keyed by a stable `operation_id` carried on the record, so a retry of the same logical
+     mutation can never produce a duplicate or a second mutation. An `operation_id` is bound to ONE canonical
+     `(path, operation, content)`: on any pre-existing / already-present / ambiguous outcome the
+     implementation MUST retrieve the durable record and verify it is THIS write. A match is a true replay
+     (return the durable record, mutate nothing); a MISMATCH — the same `operation_id` reused for a different
+     path or payload — is a collision that MUST fail closed, atomically rolling back this call's mutation so a
+     losing writer never returns success with an unrecorded write. A boolean "does a record exist" check is
+     insufficient for this — canonical retrieval (or an equivalent fingerprint) is required.
    - **Ambiguous-append recovery.** If the record append fails ambiguously (it may have durably landed
      before throwing), the implementation MUST read back by `operation_id` before compensating: if the
      record is present, the note+record pair is consistent and MUST be kept (rolling back would violate
@@ -128,6 +134,11 @@ A conforming deployment passes each numbered case (mapped to the reference confo
   duplicate record and does not re-mutate. *(tests: "atomic: append durably lands then throws ⇒ readback
   keeps the note, exactly one record (blocker 3)", "atomic: retrying the same operation_id is idempotent";
   property 9)*
+- **A11** — operation_id collision fails closed: (a) the same `operation_id` reused for a DIFFERENT path —
+  the second writer's note is rolled back and no second record is written; (b) the same `operation_id`
+  replayed with a DIFFERENT payload — refused before any mutation, no freshly-built non-durable record.
+  *(tests: "atomic: same operation_id across different paths ⇒ collision fails closed", "atomic: same
+  operation_id replayed with a different payload ⇒ collision, refused"; property 9)*
 
 ## Non-goals
 

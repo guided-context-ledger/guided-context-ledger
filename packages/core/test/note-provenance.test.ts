@@ -30,7 +30,7 @@ function memStore(initial?: Record<string, string>) {
   return { store, data };
 }
 
-/** In-memory idempotent record sink keyed by operation_id, with a readback probe. */
+/** In-memory idempotent record sink keyed by operation_id, with a canonical readback. */
 function recordSink() {
   const records: NoteWriteRecord[] = [];
   const deps = {
@@ -39,7 +39,7 @@ function recordSink() {
       records.push(rec);
       return true;
     },
-    async hasRecord(operation_id: string) { return records.some((r) => r.operation_id === operation_id); },
+    async getRecord(operation_id: string) { return records.find((r) => r.operation_id === operation_id) ?? null; },
   };
   return { records, deps };
 }
@@ -301,7 +301,7 @@ test("atomic: append durably lands then throws ⇒ readback keeps the note, exac
       records.push(rec);                 // the record durably lands...
       throw new Error("ack timeout");    // ...then the sink throws — outcome is ambiguous to the caller
     },
-    async hasRecord(operation_id: string) { return records.some((r) => r.operation_id === operation_id); },
+    async getRecord(operation_id: string) { return records.find((r) => r.operation_id === operation_id) ?? null; },
   };
   const rec = await runNoteWriteRecorded(
     { store, ...deps },
@@ -322,4 +322,35 @@ test("atomic: retrying the same operation_id is idempotent ⇒ no duplicate reco
   await runNoteWriteRecorded({ store, ...deps }, input); // retry with the same operation_id
   assert.equal(records.length, 1, "the retry adds no second record");
   assert.equal(data.get("n.md"), afterFirst, "the note is unchanged by the idempotent retry");
+});
+
+// codex#127 R3 case (1) — the SAME operation_id reused for a DIFFERENT path. The second writer mutates its own
+// note, then finds the operation_id already bound to the first write ⇒ collision ⇒ fail closed + roll back, so it
+// never returns success with an unrecorded mutation on the second note.
+test("atomic: same operation_id across different paths ⇒ collision fails closed, loser's note rolled back (R3.1)", async () => {
+  const { store, data } = memStore({ "a.md": "PRIOR-A\n", "b.md": "PRIOR-B\n" });
+  const { records, deps } = recordSink();
+  await runNoteWriteRecorded({ store, ...deps }, { notePath: "a.md", operation: "write", content: "# A\n", written_at: AXES.stamped_at!, operation_id: "op-x", axes: AXES });
+  const aAfter = data.get("a.md");
+  await assert.rejects(
+    runNoteWriteRecorded({ store, ...deps }, { notePath: "b.md", operation: "write", content: "# B\n", written_at: AXES.stamped_at!, operation_id: "op-x", axes: AXES }),
+    /collision, fail closed/);
+  assert.equal(records.length, 1, "still exactly one record — the collided write was not recorded");
+  assert.equal(data.get("a.md"), aAfter, "the first write is untouched");
+  assert.equal(data.get("b.md"), "PRIOR-B\n", "the collided second note is rolled back to prior — no unrecorded mutation");
+});
+
+// codex#127 R3 case (2) — the SAME operation_id replayed with a DIFFERENT payload. The idempotency key is bound
+// to one canonical (path, content); a different payload under the same key is a collision, refused before any
+// mutation, and never returns a freshly-built non-durable record.
+test("atomic: same operation_id replayed with a different payload ⇒ collision, refused, no mutation (R3.2)", async () => {
+  const { store, data } = memStore({ "n.md": "PRIOR\n" });
+  const { records, deps } = recordSink();
+  await runNoteWriteRecorded({ store, ...deps }, { notePath: "n.md", operation: "write", content: "# First\n", written_at: AXES.stamped_at!, operation_id: "op-y", axes: AXES });
+  const afterFirst = data.get("n.md");
+  await assert.rejects(
+    runNoteWriteRecorded({ store, ...deps }, { notePath: "n.md", operation: "write", content: "# DIFFERENT\n", written_at: AXES.stamped_at!, operation_id: "op-y", axes: AXES }),
+    /collision, fail closed/);
+  assert.equal(records.length, 1, "no second record for a colliding replay");
+  assert.equal(data.get("n.md"), afterFirst, "the note keeps the first payload — the different-payload replay never mutated it");
 });
