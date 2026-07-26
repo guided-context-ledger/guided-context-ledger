@@ -35,6 +35,23 @@ releases.
   requirement as a normative gate (machine truth below, readable projection
   beside; acceptance criteria included).
 
+- **Note-write attribution — `@guided-context-ledger/core`.** The note-write
+  analogue of the event/ledger action-provenance stamp. A note written through a
+  mediated (connector) session now carries who authored it and for whom on two
+  surfaces: a current-state `provenance:` block in the note's frontmatter, and an
+  append-only note-write record (`.gcl/note-writes.jsonl`) that is authoritative
+  for mutation history so "corrections are new records, never edits" holds for
+  notes. Sparse and back-compatible: a direct/local write with no axes is
+  byte-identical to an unstamped write, legacy notes are never backfilled, and
+  absent axes are omitted (never `null`). Each record carries the `sha256` of the
+  bytes written. New exports: `stampNoteProvenance`, `hasProvenanceAxes`,
+  `buildNoteWriteRecord`, `appendNoteWriteRecord`, `readNoteWriteRecords`,
+  `noteWritesPath`, `digestContent`, plus `resolveLedgerDir` (the standard `.gcl`
+  ledger-directory resolver). Ported from the private deployment.
+- **New spec: `spec/Note-Provenance.md`** — mediated note-write attribution as a
+  normative gate (identity axes, sparse/back-compat rules, authoritative
+  append-only record; acceptance criteria included).
+
 - **Spec — workspace creation documented as a first-class protocol operation.**
   `spec/Authority-and-Hierarchy.md` gains §8 describing owner-gated workspace
   creation through the protocol itself: a `genesis → init` ledger boundary plus a

@@ -44,5 +44,23 @@ export type {
 } from "./events.js";
 export { renderThreadMarkdown, renderIndexMarkdown, indexRowFromEvents } from "./readable.js";
 export type { IndexRow } from "./readable.js";
-export { GclLedger, LedgerError, sha256Text, canonicalizePrincipal, versionGte, STAMPED_FROM } from "./ledger.js";
+export { GclLedger, LedgerError, sha256Text, canonicalizePrincipal, versionGte, resolveLedgerDir, STAMPED_FROM } from "./ledger.js";
 export type { RevisionArtifact, RevisionEnvelope, RevisionRecord, ActionProvenance, PrincipalSource } from "./ledger.js";
+export {
+  hasProvenanceAxes,
+  stampNoteProvenance,
+  noteWritesPath,
+  digestContent,
+  buildNoteWriteRecord,
+  appendNoteWriteRecord,
+  readNoteWriteRecords,
+  runNoteWriteRecorded,
+} from "./note-provenance.js";
+export type {
+  NoteProvenanceAxes,
+  NoteWriteRecord,
+  NoteWriteOperation,
+  NoteStore,
+  RecordedNoteWriteDeps,
+  RecordedNoteWriteInput,
+} from "./note-provenance.js";
